@@ -1,5 +1,5 @@
-<<<<<<< HEAD
-# myapp
+
+# NUDGE
 
 A new Flutter project.
 
