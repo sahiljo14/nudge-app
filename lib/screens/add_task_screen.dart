@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
 import '../parser/rule_parser.dart';
+import '../database/db_helper.dart';  // ← NEW
+import 'home_screen.dart';            // ← NEW
 
 class AddTaskScreen extends StatefulWidget {
-  const AddTaskScreen({super.key});
+  final String? initialRawText;
+  const AddTaskScreen({super.key, this.initialRawText});
 
   @override
   State<AddTaskScreen> createState() => _AddTaskScreenState();
@@ -14,9 +17,19 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _rawMessageController = TextEditingController();
-  DateTime _selectedDeadline =
-  DateTime.now().add(const Duration(days: 1));
+  DateTime _selectedDeadline = DateTime.now().add(const Duration(days: 1));
   bool _showConfirmBanner = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialRawText != null && widget.initialRawText!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _rawMessageController.text = widget.initialRawText!;
+        _parseMessage();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -32,17 +45,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     final result = RuleParser.parse(raw);
 
     setState(() {
-      // Always fill the name
       if (result.name.isNotEmpty) {
         _nameController.text = result.name;
       }
-
-      // Fill deadline if found
       if (result.deadline != null) {
         _selectedDeadline = result.deadline!;
       }
-
-      // Show confirmation banner if confidence is low
       _showConfirmBanner = result.confidence < 0.6;
     });
   }
@@ -73,13 +81,26 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     });
   }
 
-  void _saveTask() {
+  void _saveTask() async {                                        // ← CHANGED
     if (!_formKey.currentState!.validate()) return;
     final newTask = Task(
       name: _nameController.text.trim(),
       deadline: _selectedDeadline,
     );
-    Navigator.of(context).pop(newTask);
+
+    if (widget.initialRawText != null) {                          // ← NEW
+      // Launched from share intent — save directly then go to HomeScreen
+      await DBHelper.instance.createTask(newTask);
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+              (route) => false,
+        );
+      }
+    } else {
+      // Launched normally from HomeScreen — pop back with task
+      Navigator.of(context).pop(newTask);
+    }
   }
 
   @override
@@ -102,15 +123,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
               // ── Paste Message Section ──────────────────────────
               const Text('Paste a message (optional)',
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _rawMessageController,
                 maxLines: 3,
                 decoration: InputDecoration(
-                  hintText:
-                  'e.g. "kal tak DSA assignment submit karna hai"',
+                  hintText: 'e.g. "kal tak DSA assignment submit karna hai"',
                   filled: true,
                   fillColor: Colors.white,
                   border: OutlineInputBorder(
@@ -156,8 +175,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         child: Text(
                           'Low confidence — please check the details below.',
                           style: TextStyle(
-                              color: Colors.orange.shade800,
-                              fontSize: 13),
+                              color: Colors.orange.shade800, fontSize: 13),
                         ),
                       ),
                     ],
@@ -171,8 +189,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
               // ── Task Name ──────────────────────────────────────
               const Text('Task Name',
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nameController,
@@ -198,8 +215,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
               // ── Deadline ───────────────────────────────────────
               const Text('Deadline',
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               GestureDetector(
                 onTap: _pickDeadline,
