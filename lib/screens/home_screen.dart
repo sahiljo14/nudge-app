@@ -248,20 +248,35 @@ class TaskDetailScreen extends StatefulWidget {
 }
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
-  NudgeDocument? _doc;
+  List<NudgeDocument> _docs = [];
   bool _loadingDoc = false;
 
   @override
   void initState() {
     super.initState();
-    _loadDoc();
+    _loadDocs();
   }
 
-  Future<void> _loadDoc() async {
-    if (widget.task.docId == null) return;
+  Future<void> _loadDocs() async {
+    final taskId = widget.task.id;
+    if (taskId == null) return;
     setState(() => _loadingDoc = true);
-    final doc = await DBHelper.instance.getDocumentById(widget.task.docId!);
-    if (mounted) setState(() { _doc = doc; _loadingDoc = false; });
+
+    final results = <NudgeDocument>[];
+
+    // Method 1: task.docId (share/doc_import flow)
+    if (widget.task.docId != null) {
+      final d = await DBHelper.instance.getDocumentById(widget.task.docId!);
+      if (d != null) results.add(d);
+    }
+
+    // Method 2: all docs with taskId (add_task_screen flow — supports multiple)
+    final byTaskId = await DBHelper.instance.getDocumentsByTaskId(taskId);
+    for (final d in byTaskId) {
+      if (!results.any((r) => r.id == d.id)) results.add(d);
+    }
+
+    if (mounted) setState(() { _docs = results; _loadingDoc = false; });
   }
 
   String get _timeLabel {
@@ -417,18 +432,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
           const SizedBox(height: 16),
 
-          // Linked document card
+          // Linked document cards
           if (_loadingDoc)
             const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-          else if (_doc != null) ...[
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8, left: 2),
-              child: Text('Attached document',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+          else if (_docs.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8, left: 2),
+              child: Text(
+                  'Attached document${_docs.length == 1 ? '' : 's'} (${_docs.length})',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
                       color: Color(0xFF666680), letterSpacing: 0.3)),
             ),
-            _LinkedDocCard(doc: _doc!),
-            const SizedBox(height: 16),
+            ..._docs.map((doc) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _LinkedDocCard(doc: doc),
+            )),
+            const SizedBox(height: 8),
           ],
 
           // Action button

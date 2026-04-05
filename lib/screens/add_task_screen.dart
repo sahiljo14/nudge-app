@@ -48,9 +48,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     _Reminder(label: 'At deadline',  offset: Duration.zero),
   ];
 
-  String? _attachedFilePath;
-  String? _attachedFileMime;
-  String? _attachedFileName;
+  // ── Attached files (multiple) ──────────────────────────────────────────────
+  final List<({String path, String mime, String name})> _attachedFiles = [];
 
   @override
   void initState() {
@@ -126,14 +125,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
+      allowMultiple: true,                          // ← allow multiple
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
     );
     if (result == null || result.files.isEmpty) return;
-    final f = result.files.first;
     setState(() {
-      _attachedFilePath = f.path;
-      _attachedFileName = f.name;
-      _attachedFileMime = _mimeFromExt(f.extension ?? '');
+      for (final f in result.files) {
+        if (f.path == null) continue;
+        // Avoid duplicates
+        if (_attachedFiles.any((a) => a.path == f.path)) continue;
+        _attachedFiles.add((
+        path: f.path!,
+        name: f.name,
+        mime: _mimeFromExt(f.extension ?? ''),
+        ));
+      }
     });
   }
 
@@ -260,16 +266,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
     await _scheduleSelected(saved);
 
-    if (_attachedFilePath != null) {
-      final doc = NudgeDocument(
-        filePath: _attachedFilePath!,
-        mimeType: _attachedFileMime ?? 'application/octet-stream',
+    // Save all attached documents
+    for (final f in _attachedFiles) {
+      await DBHelper.instance.createDocument(NudgeDocument(
+        filePath: f.path,
+        mimeType: f.mime,
         subject:  _subject,
-        note:     _attachedFileName ?? '',
+        note:     f.name,
         savedAt:  DateTime.now(),
         taskId:   id,
-      );
-      await DBHelper.instance.createDocument(doc);
+      ));
     }
 
     if (!mounted) return;
@@ -445,13 +451,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ),
                 const SizedBox(height: 16),
                 _AttachmentSection(
-                  fileName: _attachedFileName,
-                  onPick:   _pickFile,
-                  onRemove: () => setState(() {
-                    _attachedFilePath = null;
-                    _attachedFileName = null;
-                    _attachedFileMime = null;
-                  }),
+                  files:     _attachedFiles,
+                  onPick:    _pickFile,
+                  onRemove:  (i) => setState(() => _attachedFiles.removeAt(i)),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -863,78 +865,138 @@ class _RemindersSection extends StatelessWidget {
   }
 }
 
-// ── Attachment section ────────────────────────────────────────────────────────
+// ── Attachment section (multi-file) ───────────────────────────────────────────
 
 class _AttachmentSection extends StatelessWidget {
-  final String? fileName;
-  final VoidCallback onPick, onRemove;
+  final List<({String path, String mime, String name})> files;
+  final VoidCallback onPick;
+  final ValueChanged<int> onRemove;
 
-  const _AttachmentSection({required this.fileName, required this.onPick, required this.onRemove});
+  const _AttachmentSection({
+    required this.files,
+    required this.onPick,
+    required this.onRemove,
+  });
+
+  IconData _iconFor(String mime) {
+    if (mime == 'application/pdf') return Icons.picture_as_pdf_rounded;
+    if (mime.startsWith('image/')) return Icons.image_rounded;
+    return Icons.insert_drive_file_rounded;
+  }
+
+  Color _colorFor(String mime) {
+    if (mime == 'application/pdf') return const Color(0xFFD85A30);
+    if (mime.startsWith('image/')) return const Color(0xFF378ADD);
+    return AppTheme.primary;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: AppTheme.card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border)),
+      decoration: BoxDecoration(
+        color: AppTheme.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.05),
-              borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-              border: Border(bottom: BorderSide(color: AppTheme.border))),
+            color: AppTheme.primary.withValues(alpha: 0.05),
+            borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+            border: Border(bottom: BorderSide(color: AppTheme.border)),
+          ),
           child: Row(children: [
             const Icon(Icons.attach_file_rounded, size: 14, color: AppTheme.primary),
             const SizedBox(width: 6),
-            const Text('Attach document',
+            const Text('Attach documents',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
             const Spacer(),
-            Text('PDF, image, Word', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            if (files.isNotEmpty)
+              Text('${files.length} file${files.length == 1 ? '' : 's'}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400))
+            else
+              Text('PDF, image, Word',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
           ]),
         ),
+
         Padding(
           padding: const EdgeInsets.all(14),
-          child: fileName == null
-              ? GestureDetector(
-            onTap: onPick,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              decoration: BoxDecoration(color: AppTheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.border)),
-              child: Column(children: [
-                Icon(Icons.upload_file_rounded, size: 32, color: Colors.grey.shade300),
-                const SizedBox(height: 8),
-                Text('Tap to attach a file',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 4),
-                Text('Will appear in Docs section',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade300)),
-              ]),
-            ),
-          )
-              : Row(children: [
-            Container(width: 44, height: 44,
-              decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.insert_drive_file_rounded, color: AppTheme.primary, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(fileName!,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1A1A2E)),
-                overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 8),
+          child: Column(children: [
+            // Existing files list
+            if (files.isNotEmpty) ...[
+              ...List.generate(files.length, (i) {
+                final f = files[i];
+                final color = _colorFor(f.mime);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(children: [
+                    Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(_iconFor(f.mime), color: color, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(f.name,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                              color: Color(0xFF1A1A2E)),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => onRemove(i),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFEEEE),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.close_rounded,
+                            size: 16, color: Color(0xFFA32D2D)),
+                      ),
+                    ),
+                  ]),
+                );
+              }),
+              const SizedBox(height: 4),
+            ],
+
+            // Add more / first file button
             GestureDetector(
-              onTap: onRemove,
+              onTap: onPick,
               child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: const Color(0xFFFFEEEE),
-                    borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFA32D2D)),
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(vertical: files.isEmpty ? 18 : 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: files.isEmpty
+                    ? Column(children: [
+                  Icon(Icons.upload_file_rounded, size: 32, color: Colors.grey.shade300),
+                  const SizedBox(height: 8),
+                  Text('Tap to attach files',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade400,
+                          fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 4),
+                  Text('Will appear in Docs section',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade300)),
+                ])
+                    : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.add_rounded, size: 16, color: Colors.grey.shade500),
+                  const SizedBox(width: 6),
+                  Text('Add another file',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade500,
+                          fontWeight: FontWeight.w600)),
+                ]),
               ),
             ),
           ]),

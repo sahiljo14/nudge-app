@@ -132,6 +132,18 @@ class DBHelper {
     return NudgeDocument.fromMap(rows.first);
   }
 
+  // Returns ALL documents linked to a task via taskId (supports multiple files)
+  Future<List<NudgeDocument>> getDocumentsByTaskId(int taskId) async {
+    final db = await database;
+    final rows = await db.query(
+      'documents',
+      where: 'taskId = ?',
+      whereArgs: [taskId],
+      orderBy: 'savedAt ASC',
+    );
+    return rows.map(NudgeDocument.fromMap).toList();
+  }
+
   Future<void> updateDocument(NudgeDocument doc) async {
     final db = await database;
     await db.update('documents', doc.toMap(),
