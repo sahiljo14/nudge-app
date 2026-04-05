@@ -25,86 +25,69 @@ class TaskCard extends StatelessWidget {
       return h < 24 ? 'Overdue by ${h}h' : 'Overdue by ${-diff.inDays}d';
     }
     if (diff.inMinutes < 60) return 'Due in ${diff.inMinutes}m';
-    if (diff.inHours < 24)   return 'Due in ${diff.inHours}h';
-    if (diff.inDays == 1)    return 'Due tomorrow';
+    if (diff.inHours < 24) return 'Due in ${diff.inHours}h';
+    if (diff.inDays == 1) return 'Due tomorrow';
     return DateFormat('d MMM · h:mm a').format(task.deadline);
   }
 
   @override
   Widget build(BuildContext context) {
     final subjectColor = AppTheme.subjectColor(task.subject);
-    final urgColor = task.isDone
-        ? const Color(0xFF3B6D11)
-        : AppTheme.urgencyColor(task.deadline);
+    final urgColor =
+    task.isDone ? const Color(0xFF3B6D11) : AppTheme.urgencyColor(task.deadline);
     final isDone = task.isDone;
+    final accentColor = isDone ? const Color(0xFFCCCCD8) : subjectColor;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Dismissible(
-        key: ValueKey(task.id),
-        direction: DismissDirection.endToStart,
-        confirmDismiss: (_) async { onDelete(); return false; },
-        background: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 20),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFEEEE),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFFFCCCC)),
-          ),
-          child: const Icon(Icons.delete_outline_rounded,
-              color: Color(0xFFA32D2D), size: 24),
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppTheme.card,
-            borderRadius: BorderRadius.circular(16),
-            border: Border(
-              left: BorderSide(
-                color: isDone ? const Color(0xFFCCCCD8) : subjectColor,
-                width: 3.5,
-              ),
-              top: const BorderSide(color: AppTheme.border),
-              right: const BorderSide(color: AppTheme.border),
-              bottom: const BorderSide(color: AppTheme.border),
+    // ── Use Stack to draw the left accent bar so we keep borderRadius ────────
+    // Mixing asymmetric Border() with borderRadius on BoxDecoration breaks
+    // rendering in Flutter — the whole card becomes invisible.
+    final cardContent = ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(
+        children: [
+          // Card background + uniform border
+          Container(
+            decoration: BoxDecoration(
+              color: AppTheme.card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.border),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Checkbox
-                GestureDetector(
-                  onTap: onToggleDone,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOutBack,
-                    width: 24, height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isDone ? const Color(0xFF3B6D11) : Colors.transparent,
-                      border: Border.all(
-                        color: isDone
-                            ? const Color(0xFF3B6D11)
-                            : const Color(0xFFCCCCD8),
-                        width: 2,
+            child: Padding(
+              // Extra left padding to make room for the accent bar
+              padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Checkbox
+                  GestureDetector(
+                    onTap: onToggleDone,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOutBack,
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isDone ? const Color(0xFF3B6D11) : Colors.transparent,
+                        border: Border.all(
+                          color: isDone
+                              ? const Color(0xFF3B6D11)
+                              : const Color(0xFFCCCCD8),
+                          width: 2,
+                        ),
                       ),
+                      child: isDone
+                          ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+                          : null,
                     ),
-                    child: isDone
-                        ? const Icon(Icons.check_rounded,
-                        size: 14, color: Colors.white)
-                        : null,
                   ),
-                ),
-                const SizedBox(width: 12),
-                // Content
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
+                  const SizedBox(width: 12),
+                  // Content
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
                           Expanded(
                             child: Text(
                               task.name,
@@ -114,9 +97,7 @@ class TaskCard extends StatelessWidget {
                                 color: isDone
                                     ? const Color(0xFFAAAAB5)
                                     : const Color(0xFF1A1A2E),
-                                decoration: isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
+                                decoration: isDone ? TextDecoration.lineThrough : null,
                                 decorationColor: const Color(0xFFAAAAB5),
                                 letterSpacing: -0.2,
                               ),
@@ -130,8 +111,7 @@ class TaskCard extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFFFF0EE),
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                    color: const Color(0xFFFFCCBB)),
+                                border: Border.all(color: const Color(0xFFFFCCBB)),
                               ),
                               child: const Text('URGENT',
                                   style: TextStyle(
@@ -140,61 +120,93 @@ class TaskCard extends StatelessWidget {
                                       color: Color(0xFF993C1D),
                                       letterSpacing: 0.8)),
                             ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          // Subject pill
+                        ]),
+                        const SizedBox(height: 8),
+                        Row(children: [
                           if (task.subject.isNotEmpty) ...[
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 7, vertical: 3),
                               decoration: BoxDecoration(
-                                color:
-                                subjectColor.withValues(alpha: 0.10),
+                                color: subjectColor.withValues(alpha: 0.10),
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: Text(
-                                task.subject,
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: subjectColor),
-                              ),
+                              child: Text(task.subject,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: subjectColor)),
                             ),
                             const SizedBox(width: 8),
                           ],
-                          // Type icon
-                          Icon(
-                            AppTheme.taskTypeIcon(task.taskType),
-                            size: 13,
-                            color: const Color(0xFFAAAAB5),
-                          ),
+                          Icon(AppTheme.taskTypeIcon(task.taskType),
+                              size: 13, color: const Color(0xFFAAAAB5)),
                           const SizedBox(width: 4),
-                          // Urgency label
                           Expanded(
                             child: Text(
                               _timeLabel,
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: isDone
-                                    ? const Color(0xFF3B6D11)
-                                    : urgColor,
+                                color: isDone ? const Color(0xFF3B6D11) : urgColor,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        ],
-                      ),
-                    ],
+                        ]),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+          // Left accent bar — drawn on top, clipped by ClipRRect
+          Positioned(
+            left: 0, top: 0, bottom: 0,
+            child: Container(
+              width: 4,
+              decoration: BoxDecoration(
+                color: accentColor,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  bottomLeft: Radius.circular(16),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (task.id == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: cardContent,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Dismissible(
+        key: ValueKey('task_${task.id}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) async {
+          onDelete();
+          return false;
+        },
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFEEEE),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFFFCCCC)),
+          ),
+          child: const Icon(Icons.delete_outline_rounded,
+              color: Color(0xFFA32D2D), size: 24),
         ),
+        child: cardContent,
       ),
     );
   }

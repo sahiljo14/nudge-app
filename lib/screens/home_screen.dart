@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 import '../database/db_helper.dart';
 import '../models/task.dart';
 import '../models/document.dart';
@@ -38,17 +40,23 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final today   = await DBHelper.instance.getTodayTasks();
     final all     = await DBHelper.instance.getAllTasks();
     final subs    = await DBHelper.instance.getSubjects();
     final docsMap = <String, List<NudgeDocument>>{};
     for (final s in subs) {
       docsMap[s] = await DBHelper.instance.getDocumentsBySubject(s);
     }
-    // Docs with no subject
     final allDocs = await DBHelper.instance.getAllDocuments();
     final noSub   = allDocs.where((d) => d.subject.isEmpty).toList();
     if (noSub.isNotEmpty) docsMap['Uncategorised'] = noSub;
+
+    final now   = DateTime.now();
+    final today = all.where((t) {
+      if (t.isDone) return false;
+      // show tasks due today OR already overdue (past deadline)
+      final dl = t.deadline;
+      return dl.isBefore(DateTime(now.year, now.month, now.day + 1));
+    }).toList();
 
     setState(() {
       _todayTasks    = today;
@@ -126,6 +134,24 @@ class _HomeScreenState extends State<HomeScreen>
         false;
   }
 
+  void _openTaskDetail(Task task) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => TaskDetailScreen(
+        task: task,
+        onToggle: () async { await _toggleDone(task); Navigator.pop(context); },
+        onDelete: () async {
+          final ok = await _confirmDelete(task.name);
+          if (ok && context.mounted) {
+            await NotificationService.instance.cancelReminders(task);
+            await DBHelper.instance.deleteTask(task.id!);
+            await _load();
+            if (context.mounted) Navigator.pop(context);
+          }
+        },
+      ),
+    )).then((_) => _load());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -180,11 +206,13 @@ class _HomeScreenState extends State<HomeScreen>
               tasks: _todayTasks,
               onToggle: _toggleDone,
               onDelete: _deleteTask,
-              onAdd: _addTask),
+              onAdd: _addTask,
+              onTap: _openTaskDetail),
           _AllTab(
               tasks: _allTasks,
               onToggle: _toggleDone,
-              onDelete: _deleteTask),
+              onDelete: _deleteTask,
+              onTap: _openTaskDetail),
           _DocsTab(
               docsBySubject: _docsBySubject,
               onRefresh: _load),
@@ -203,12 +231,312 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// ── Today tab ─────────────────────────────────────────────────────────────
+// ── Task Detail Screen ────────────────────────────────────────────────────────
+
+class TaskDetailScreen extends StatefulWidget {
+  final Task task;
+  final VoidCallback onToggle;
+  final VoidCallback onDelete;
+  const TaskDetailScreen({
+    super.key,
+    required this.task,
+    required this.onToggle,
+    required this.onDelete,
+  });
+  @override
+  State<TaskDetailScreen> createState() => _TaskDetailScreenState();
+}
+
+class _TaskDetailScreenState extends State<TaskDetailScreen> {
+  NudgeDocument? _doc;
+  bool _loadingDoc = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDoc();
+  }
+
+  Future<void> _loadDoc() async {
+    if (widget.task.docId == null) return;
+    setState(() => _loadingDoc = true);
+    final doc = await DBHelper.instance.getDocumentById(widget.task.docId!);
+    if (mounted) setState(() { _doc = doc; _loadingDoc = false; });
+  }
+
+  String get _timeLabel {
+    final task = widget.task;
+    if (task.isDone) return 'Completed ✓';
+    final diff = task.deadline.difference(DateTime.now());
+    if (diff.isNegative) {
+      final h = -diff.inHours;
+      return h < 24 ? 'Overdue by ${h}h' : 'Overdue by ${-diff.inDays}d';
+    }
+    if (diff.inMinutes < 60) return 'Due in ${diff.inMinutes}m';
+    if (diff.inHours < 24) return 'Due in ${diff.inHours}h';
+    if (diff.inDays == 1) return 'Due tomorrow';
+    return 'Due in ${diff.inDays} days';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final task = widget.task;
+    final subjectColor = AppTheme.subjectColor(task.subject);
+    final urgColor = task.isDone
+        ? const Color(0xFF3B6D11)
+        : AppTheme.urgencyColor(task.deadline);
+
+    return Scaffold(
+      backgroundColor: AppTheme.surface,
+      appBar: AppBar(
+        title: const Text('Task details'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded),
+            color: const Color(0xFFA32D2D),
+            onPressed: widget.onDelete,
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Main card — use Stack for left accent so borderRadius isn't broken
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(children: [
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: AppTheme.card,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // Status badge row
+                  Row(children: [
+                    if (task.priority == 'urgent' && !task.isDone)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF0EE),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFFFCCBB)),
+                        ),
+                        child: const Text('URGENT',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800,
+                                color: Color(0xFF993C1D), letterSpacing: 0.8)),
+                      ),
+                    if (task.isDone) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEEF7E8),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text('DONE',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800,
+                                color: Color(0xFF3B6D11), letterSpacing: 0.8)),
+                      ),
+                    ],
+                    const Spacer(),
+                    Icon(AppTheme.taskTypeIcon(task.taskType),
+                        size: 18, color: subjectColor),
+                  ]),
+                  const SizedBox(height: 12),
+                  // Task name
+                  Text(task.name,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: task.isDone ? const Color(0xFFAAAAB5) : const Color(0xFF1A1A2E),
+                        letterSpacing: -0.4,
+                        decoration: task.isDone ? TextDecoration.lineThrough : null,
+                        decorationColor: const Color(0xFFAAAAB5),
+                      )),
+                  const SizedBox(height: 16),
+                  // Subject chip
+                  if (task.subject.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: subjectColor.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(task.subject,
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: subjectColor)),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  // Deadline
+                  _DetailRow(
+                    icon: Icons.calendar_today_rounded,
+                    iconColor: urgColor,
+                    label: 'Deadline',
+                    value: DateFormat('EEEE, d MMMM yyyy · h:mm a').format(task.deadline),
+                    valueColor: const Color(0xFF1A1A2E),
+                  ),
+                  const SizedBox(height: 10),
+                  // Time remaining
+                  _DetailRow(
+                    icon: Icons.timer_outlined,
+                    iconColor: urgColor,
+                    label: 'Status',
+                    value: _timeLabel,
+                    valueColor: urgColor,
+                  ),
+                  const SizedBox(height: 10),
+                  // Type
+                  _DetailRow(
+                    icon: AppTheme.taskTypeIcon(task.taskType),
+                    iconColor: const Color(0xFF888899),
+                    label: 'Type',
+                    value: task.taskType[0].toUpperCase() + task.taskType.substring(1),
+                    valueColor: const Color(0xFF555566),
+                  ),
+                ]),
+              ),
+              // Left accent bar
+              Positioned(
+                left: 0, top: 0, bottom: 0,
+                child: Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: subjectColor,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+            ]), // Stack
+          ), // ClipRRect
+
+          const SizedBox(height: 16),
+
+          // Linked document card
+          if (_loadingDoc)
+            const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+          else if (_doc != null) ...[
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8, left: 2),
+              child: Text('Attached document',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                      color: Color(0xFF666680), letterSpacing: 0.3)),
+            ),
+            _LinkedDocCard(doc: _doc!),
+            const SizedBox(height: 16),
+          ],
+
+          // Action button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: widget.onToggle,
+              icon: Icon(task.isDone
+                  ? Icons.replay_rounded
+                  : Icons.check_circle_outline_rounded),
+              label: Text(task.isDone ? 'Mark as pending' : 'Mark as done'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: task.isDone
+                    ? const Color(0xFF555566)
+                    : const Color(0xFF3B6D11),
+              ),
+            ),
+          ),
+          const SizedBox(height: 80),
+        ]),
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String value;
+  final Color valueColor;
+  const _DetailRow({
+    required this.icon, required this.iconColor,
+    required this.label, required this.value, required this.valueColor,
+  });
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Icon(icon, size: 16, color: iconColor),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+            style: const TextStyle(fontSize: 11, color: Color(0xFFAAAAB5), fontWeight: FontWeight.w500)),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: valueColor)),
+      ])),
+    ],
+  );
+}
+
+class _LinkedDocCard extends StatelessWidget {
+  final NudgeDocument doc;
+  const _LinkedDocCard({required this.doc});
+  @override
+  Widget build(BuildContext context) {
+    final color = AppTheme.subjectColor(doc.subject);
+    return GestureDetector(
+      onTap: () async {
+        final result = await OpenFilex.open(doc.filePath);
+        if (result.type != ResultType.done && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Cannot open: ${result.message}'),
+            backgroundColor: const Color(0xFFA32D2D),
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          leading: Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              doc.isPdf ? Icons.picture_as_pdf_rounded : Icons.image_rounded,
+              color: color, size: 24,
+            ),
+          ),
+          title: Text(
+            doc.note.isNotEmpty ? doc.note : 'Document',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1A1A2E)),
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(doc.isPdf ? 'PDF · tap to open' : 'Image · tap to open',
+              style: const TextStyle(fontSize: 12, color: Color(0xFFAAAAB5))),
+          trailing: const Icon(Icons.open_in_new_rounded, color: Color(0xFFCCCCD8), size: 18),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Today tab ─────────────────────────────────────────────────────────────────
 
 class _TodayTab extends StatelessWidget {
   final List<Task> tasks;
   final Function(Task) onToggle;
   final Function(Task) onDelete;
+  final Function(Task) onTap;
   final VoidCallback onAdd;
 
   const _TodayTab({
@@ -216,13 +544,14 @@ class _TodayTab extends StatelessWidget {
     required this.onToggle,
     required this.onDelete,
     required this.onAdd,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final now   = DateTime.now();
-    final h     = now.hour;
-    final greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    final now      = DateTime.now();
+    final h        = now.hour;
+    final greet    = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     final overdue  = tasks.where((t) => t.deadline.isBefore(now)).toList();
     final upcoming = tasks.where((t) => !t.deadline.isBefore(now)).toList();
 
@@ -280,10 +609,13 @@ class _TodayTab extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
-                        (_, i) => TaskCard(
-                        task: overdue[i],
-                        onToggleDone: () => onToggle(overdue[i]),
-                        onDelete: () => onDelete(overdue[i])),
+                        (_, i) => GestureDetector(
+                      onTap: () => onTap(overdue[i]),
+                      child: TaskCard(
+                          task: overdue[i],
+                          onToggleDone: () => onToggle(overdue[i]),
+                          onDelete: () => onDelete(overdue[i])),
+                    ),
                     childCount: overdue.length,
                   ),
                 ),
@@ -305,10 +637,13 @@ class _TodayTab extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
-                        (_, i) => TaskCard(
-                        task: upcoming[i],
-                        onToggleDone: () => onToggle(upcoming[i]),
-                        onDelete: () => onDelete(upcoming[i])),
+                        (_, i) => GestureDetector(
+                      onTap: () => onTap(upcoming[i]),
+                      child: TaskCard(
+                          task: upcoming[i],
+                          onToggleDone: () => onToggle(upcoming[i]),
+                          onDelete: () => onDelete(upcoming[i])),
+                    ),
                     childCount: upcoming.length,
                   ),
                 ),
@@ -322,14 +657,16 @@ class _TodayTab extends StatelessWidget {
   }
 }
 
-// ── All tasks tab ─────────────────────────────────────────────────────────
+// ── All tasks tab ─────────────────────────────────────────────────────────────
 
 class _AllTab extends StatefulWidget {
   final List<Task> tasks;
   final Function(Task) onToggle;
   final Function(Task) onDelete;
+  final Function(Task) onTap;
   const _AllTab(
-      {required this.tasks, required this.onToggle, required this.onDelete});
+      {required this.tasks, required this.onToggle,
+        required this.onDelete, required this.onTap});
   @override
   State<_AllTab> createState() => _AllTabState();
 }
@@ -397,10 +734,13 @@ class _AllTabState extends State<_AllTab> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
-                    (_, i) => TaskCard(
-                    task: _visible[i],
-                    onToggleDone: () => widget.onToggle(_visible[i]),
-                    onDelete: () => widget.onDelete(_visible[i])),
+                    (_, i) => GestureDetector(
+                  onTap: () => widget.onTap(_visible[i]),
+                  child: TaskCard(
+                      task: _visible[i],
+                      onToggleDone: () => widget.onToggle(_visible[i]),
+                      onDelete: () => widget.onDelete(_visible[i])),
+                ),
                 childCount: _visible.length,
               ),
             ),
@@ -410,7 +750,7 @@ class _AllTabState extends State<_AllTab> {
   }
 }
 
-// ── Docs tab ──────────────────────────────────────────────────────────────
+// ── Docs tab ──────────────────────────────────────────────────────────────────
 
 class _DocsTab extends StatelessWidget {
   final Map<String, List<NudgeDocument>> docsBySubject;
@@ -421,7 +761,7 @@ class _DocsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (docsBySubject.isEmpty) {
-      return _EmptyState(
+      return const _EmptyState(
         icon: Icons.folder_open_rounded,
         title: 'No documents yet',
         subtitle:
@@ -515,17 +855,30 @@ class _DocCard extends StatelessWidget {
           style: const TextStyle(
               fontSize: 12, color: Color(0xFFAAAAB5)),
         ),
-        trailing: const Icon(Icons.chevron_right_rounded,
+        trailing: const Icon(Icons.open_in_new_rounded,
             color: Color(0xFFCCCCD8)),
         onTap: () async {
-          // Linked task info
-          if (doc.taskId != null) {
-            final task =
-            await DBHelper.instance.getTaskById(doc.taskId!);
+          final result = await OpenFilex.open(doc.filePath);
+          if (result.type != ResultType.done && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Cannot open file: ${result.message}'),
+                backgroundColor: const Color(0xFFA32D2D),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            );
+          }
+          if (doc.taskId != null && context.mounted) {
+            final task = await DBHelper.instance.getTaskById(doc.taskId!);
             if (task != null && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                 content: Text('Linked task: ${task.name}'),
                 backgroundColor: color,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ));
             }
           }
@@ -535,7 +888,7 @@ class _DocCard extends StatelessWidget {
   }
 }
 
-// ── Reusable small widgets ────────────────────────────────────────────────
+// ── Reusable small widgets ────────────────────────────────────────────────────
 
 class _StatChip extends StatelessWidget {
   final String label;

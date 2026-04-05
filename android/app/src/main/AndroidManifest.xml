@@ -4,9 +4,12 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Storage permissions for reading shared files -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
+        android:minSdkVersion="33"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
         android:minSdkVersion="33"/>
 
     <application
@@ -17,7 +20,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
@@ -29,7 +32,7 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Share plain text (WhatsApp messages, emails) -->
+            <!-- Share plain text (WhatsApp messages, emails, SMS) -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -43,7 +46,7 @@
                 <data android:mimeType="application/pdf"/>
             </intent-filter>
 
-            <!-- Share images (screenshots of notices, assignment sheets) -->
+            <!-- Share images (screenshots, photos) -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -64,7 +67,7 @@
                 <data android:mimeType="application/msword"/>
             </intent-filter>
 
-            <!-- Share any other document types (catch-all) -->
+            <!-- Catch-all for other document types -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -84,7 +87,8 @@
             </intent-filter>
         </receiver>
 
-        <!-- open_filex provider (needed to open files on Android 7+) -->
+        <!-- FileProvider — needed to open files on Android 7+ and to read
+             content:// URIs shared from other apps like WhatsApp -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

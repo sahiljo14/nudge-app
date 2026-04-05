@@ -34,6 +34,7 @@ class NotificationService {
     _ready = true;
   }
 
+  // ── Default 3-slot reminders (used by text_import_screen & doc_import_screen)
   Future<void> scheduleReminders(Task task) async {
     if (!_ready) await init();
     await cancelReminders(task);
@@ -52,21 +53,46 @@ class NotificationService {
     for (final s in slots) {
       if (s.$1.isAfter(now)) {
         await _schedule(
-          id: task.id! * 10 + s.$4,
-          title: s.$2,
-          body: s.$3,
-          when: s.$1,
-          urgent: s.$4 >= 2,
+          id:      task.id! * 10 + s.$4,
+          title:   s.$2,
+          body:    s.$3,
+          when:    s.$1,
+          urgent:  s.$4 >= 2,
           payload: 'task_${task.id}',
         );
       }
     }
   }
 
+  // ── Custom reminder for a specific time + label (used by add_task_screen)
+  Future<void> scheduleCustomReminder({
+    required int id,
+    required Task task,
+    required DateTime when,
+    required String label,
+  }) async {
+    if (!_ready) await init();
+    final urgent = when.difference(DateTime.now()).inHours <= 2;
+    await _schedule(
+      id:      id,
+      title:   '${urgent ? "⚡" : "📋"} ${task.name}',
+      body:    '$label reminder',
+      when:    when,
+      urgent:  urgent,
+      payload: 'task_${task.id}',
+    );
+  }
+
+  // ── Cancel all reminders for a task (covers both slot*10 and slot*100 ids)
   Future<void> cancelReminders(Task task) async {
     if (task.id == null) return;
+    // Cancel default slots (id * 10 + 1/2/3)
     for (final slot in [1, 2, 3]) {
       await _plugin.cancel(task.id! * 10 + slot);
+    }
+    // Cancel custom slots (id * 100 + 0..99)
+    for (int i = 0; i < 20; i++) {
+      await _plugin.cancel(task.id! * 100 + i);
     }
   }
 
@@ -104,7 +130,7 @@ class NotificationService {
           ? 'High-priority deadline alerts'
           : 'Scheduled task reminders',
       importance: urgent ? Importance.max : Importance.high,
-      priority: urgent ? Priority.max : Priority.high,
+      priority:   urgent ? Priority.max  : Priority.high,
       color: urgent ? const Color(0xFFD85A30) : const Color(0xFF6C63FF),
       enableVibration: true,
       autoCancel: true,

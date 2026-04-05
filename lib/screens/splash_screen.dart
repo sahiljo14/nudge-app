@@ -41,8 +41,13 @@ class _SplashScreenState extends State<SplashScreen>
     if (data.hasText) {
       dest = TextImportScreen(sharedText: data.text!);
     } else if (data.hasFile) {
+      // usablePath is the locally copied path (works for content:// from
+      // WhatsApp, Gmail, Drive, etc.); falls back to raw URI for file:// URIs.
+      final path = data.usablePath ?? data.fileUri!;
       dest = DocImportScreen(
-          fileUri: data.fileUri!, mimeType: data.fileMime ?? '');
+        fileUri:  path,
+        mimeType: data.fileMime ?? '',
+      );
     } else {
       dest = const HomeScreen();
     }

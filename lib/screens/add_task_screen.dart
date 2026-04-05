@@ -3,9 +3,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
 import '../models/task.dart';
+import '../models/document.dart';
 import '../parser/task_parser.dart';
 import '../theme/app_theme.dart';
+import '../database/db_helper.dart';
+import '../services/notification_service.dart';
+import 'home_screen.dart';
+
+// ── Reminder model ────────────────────────────────────────────────────────────
+
+class _Reminder {
+  final String label;
+  final Duration offset;
+  bool enabled;
+  _Reminder({required this.label, required this.offset, this.enabled = true});
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 class AddTaskScreen extends StatefulWidget {
   final String prefill;
@@ -15,22 +31,31 @@ class AddTaskScreen extends StatefulWidget {
 }
 
 class _AddTaskScreenState extends State<AddTaskScreen> {
-  final _ctrl = TextEditingController();
+  final _ctrl  = TextEditingController();
   final _focus = FocusNode();
   ParsedTask? _parsed;
   bool _showReview = false;
-  bool _saving = false;
+  bool _saving     = false;
 
-  // Editable review fields
   late DateTime _deadline;
-  late String _priority;
-  late String _taskType;
-  late String _subject;
+  late String   _priority;
+  late String   _taskType;
+  late String   _subject;
+
+  final List<_Reminder> _reminders = [
+    _Reminder(label: '1 day before', offset: const Duration(days: 1)),
+    _Reminder(label: '2 hrs before', offset: const Duration(hours: 2)),
+    _Reminder(label: 'At deadline',  offset: Duration.zero),
+  ];
+
+  String? _attachedFilePath;
+  String? _attachedFileMime;
+  String? _attachedFileName;
 
   @override
   void initState() {
     super.initState();
-    _deadline = DateTime.now().add(const Duration(days: 1, hours: 0));
+    _deadline = DateTime.now().add(const Duration(days: 1));
     _priority = 'normal';
     _taskType = 'assignment';
     _subject  = '';
@@ -38,8 +63,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _ctrl.text = widget.prefill;
       WidgetsBinding.instance.addPostFrameCallback((_) => _parse());
     } else {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _focus.requestFocus());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
     }
     _ctrl.addListener(_onTextChanged);
   }
@@ -62,11 +86,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     HapticFeedback.lightImpact();
     final r = TaskParser.parse(text);
     setState(() {
-      _parsed    = r;
-      _deadline  = r.deadline;
-      _priority  = r.priority;
-      _taskType  = r.taskType;
-      _subject   = r.subject;
+      _parsed     = r;
+      _deadline   = r.deadline;
+      _priority   = r.priority;
+      _taskType   = r.taskType;
+      _subject    = r.subject;
       _showReview = true;
     });
   }
@@ -79,10 +103,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: Theme.of(ctx)
-              .colorScheme
-              .copyWith(primary: AppTheme.primary),
-        ),
+            colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: AppTheme.primary)),
         child: child!,
       ),
     );
@@ -92,34 +113,188 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       initialTime: TimeOfDay.fromDateTime(_deadline),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: Theme.of(ctx)
-              .colorScheme
-              .copyWith(primary: AppTheme.primary),
-        ),
+            colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: AppTheme.primary)),
         child: child!,
       ),
     );
     if (time == null) return;
     setState(() {
-      _deadline = DateTime(date.year, date.month, date.day,
-          time.hour, time.minute);
+      _deadline = DateTime(date.year, date.month, date.day, time.hour, time.minute);
     });
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    final f = result.files.first;
+    setState(() {
+      _attachedFilePath = f.path;
+      _attachedFileName = f.name;
+      _attachedFileMime = _mimeFromExt(f.extension ?? '');
+    });
+  }
+
+  String _mimeFromExt(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'pdf':  return 'application/pdf';
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg';
+      case 'png':  return 'image/png';
+      case 'doc':  return 'application/msword';
+      case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      default:     return 'application/octet-stream';
+    }
+  }
+
+  // ── Fixed custom reminder dialog — uses BottomSheet instead of AlertDialog
+  // to avoid pixel overflow on small screens
+  void _addCustomReminder() {
+    int days = 0, hours = 0, minutes = 0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: EdgeInsets.only(
+              left: 24, right: 24, top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Handle bar
+              Container(width: 40, height: 4,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFDDDDE8),
+                      borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 20),
+              const Text('Custom reminder',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
+                      color: Color(0xFF1A1A2E))),
+              const SizedBox(height: 6),
+              Text('How long before the deadline?',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+              const SizedBox(height: 28),
+
+              // Three steppers side by side — each in an Expanded
+              IntrinsicHeight(
+                child: Row(
+                  children: [
+                    Expanded(child: _StepperColumn(
+                      label: 'Days',
+                      value: days,
+                      onChanged: (v) => setSheet(() => days = v),
+                    )),
+                    VerticalDivider(color: Colors.grey.shade100, width: 24),
+                    Expanded(child: _StepperColumn(
+                      label: 'Hours',
+                      value: hours,
+                      onChanged: (v) => setSheet(() => hours = v),
+                    )),
+                    VerticalDivider(color: Colors.grey.shade100, width: 24),
+                    Expanded(child: _StepperColumn(
+                      label: 'Mins',
+                      value: minutes,
+                      onChanged: (v) => setSheet(() => minutes = v),
+                    )),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    final total = Duration(days: days, hours: hours, minutes: minutes);
+                    if (total.inMinutes > 0) {
+                      setState(() => _reminders.add(
+                          _Reminder(label: _durationLabel(total), offset: total, enabled: true)));
+                    }
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Add reminder'),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel', style: TextStyle(color: Color(0xFF888899))),
+              ),
+            ]),
+          );
+        },
+      ),
+    );
+  }
+
+  String _durationLabel(Duration d) {
+    if (d.inDays >= 1)  return '${d.inDays}d before';
+    if (d.inHours >= 1) return '${d.inHours}h before';
+    return '${d.inMinutes}m before';
   }
 
   Future<void> _save() async {
     if (_ctrl.text.trim().isEmpty) return;
     if (!_showReview) { _parse(); return; }
-
     setState(() => _saving = true);
-    final taskName = _parsed?.taskName ?? _ctrl.text.trim();
 
-    Navigator.pop(context, Task(
+    final taskName = _parsed?.taskName ?? _ctrl.text.trim();
+    final task = Task(
       name:     taskName.isNotEmpty ? taskName : _ctrl.text.trim(),
       deadline: _deadline,
       priority: _priority,
       taskType: _taskType,
       subject:  _subject,
-    ));
+    );
+
+    final id    = await DBHelper.instance.createTask(task);
+    final saved = task.copyWith(id: id);
+
+    await _scheduleSelected(saved);
+
+    if (_attachedFilePath != null) {
+      final doc = NudgeDocument(
+        filePath: _attachedFilePath!,
+        mimeType: _attachedFileMime ?? 'application/octet-stream',
+        subject:  _subject,
+        note:     _attachedFileName ?? '',
+        savedAt:  DateTime.now(),
+        taskId:   id,
+      );
+      await DBHelper.instance.createDocument(doc);
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+          (_) => false,
+    );
+  }
+
+  Future<void> _scheduleSelected(Task task) async {
+    await NotificationService.instance.cancelReminders(task);
+    final now = DateTime.now();
+    for (int i = 0; i < _reminders.length; i++) {
+      final r = _reminders[i];
+      if (!r.enabled) continue;
+      final when = task.deadline.subtract(r.offset);
+      if (when.isAfter(now)) {
+        await NotificationService.instance.scheduleCustomReminder(
+          id: task.id! * 100 + i,
+          task: task,
+          when: when,
+          label: r.label,
+        );
+      }
+    }
   }
 
   @override
@@ -129,7 +304,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+                (_) => false,
+          ),
         ),
         title: const Text('New task'),
         actions: [
@@ -152,17 +330,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Prompt field ────────────────────────────────────────────
               const Text('What do you need to do?',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A1A2E),
-                      letterSpacing: -0.5)),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
+                      color: Color(0xFF1A1A2E), letterSpacing: -0.5)),
               const SizedBox(height: 6),
               Text('Type anything — Nudge figures out the rest',
-                  style: TextStyle(
-                      fontSize: 13, color: Colors.grey.shade500)),
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
               const SizedBox(height: 16),
 
               // Input box
@@ -171,9 +344,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   color: AppTheme.card,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _showReview
-                        ? AppTheme.primary
-                        : AppTheme.border,
+                    color: _showReview ? AppTheme.primary : AppTheme.border,
                     width: _showReview ? 2 : 1,
                   ),
                 ),
@@ -181,13 +352,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   TextField(
                     controller: _ctrl,
                     focusNode: _focus,
-                    maxLines: 4,
-                    minLines: 3,
+                    maxLines: 4, minLines: 3,
                     textCapitalization: TextCapitalization.sentences,
-                    style: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF1A1A2E),
-                        height: 1.5),
+                    style: const TextStyle(fontSize: 15, color: Color(0xFF1A1A2E), height: 1.5),
                     decoration: const InputDecoration(
                       hintText:
                       'e.g. "OS assignment kal tak submit karna hai"\n'
@@ -197,49 +364,36 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       contentPadding: EdgeInsets.all(16),
                     ),
                   ),
-                  // Action row
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      border: Border(
-                          top: BorderSide(color: AppTheme.border)),
-                    ),
+                        border: Border(top: BorderSide(color: AppTheme.border))),
                     child: Row(children: [
                       GestureDetector(
                         onTap: () async {
-                          final d = await Clipboard.getData(
-                              Clipboard.kTextPlain);
+                          final d = await Clipboard.getData(Clipboard.kTextPlain);
                           if (d?.text != null) {
                             _ctrl.text = d!.text!;
                             setState(() => _showReview = false);
                           }
                         },
                         child: Row(children: [
-                          Icon(Icons.content_paste_rounded,
-                              size: 15, color: Colors.grey.shade400),
+                          Icon(Icons.content_paste_rounded, size: 15, color: Colors.grey.shade400),
                           const SizedBox(width: 4),
-                          Text('Paste',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade400)),
+                          Text('Paste', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
                         ]),
                       ),
                       const Spacer(),
                       GestureDetector(
                         onTap: _parse,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
                             color: AppTheme.primary,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Text('Set reminder',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700)),
+                              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
                         ),
                       ),
                     ]),
@@ -247,58 +401,57 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ]),
               ),
 
-              // ── Example chips ───────────────────────────────────────────
+              // Example chips
               if (!_showReview) ...[
                 const SizedBox(height: 16),
                 Text('Try an example',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade400,
-                        fontWeight: FontWeight.w500)),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: [
-                    'OS assignment kal tak urgent',
-                    'Maths exam Monday 9am',
-                    'Submit form today by 5pm',
-                    'DBMS project next week',
-                  ].map((ex) => GestureDetector(
-                    onTap: () {
-                      _ctrl.text = ex;
-                      _parse();
-                    },
+                Wrap(spacing: 8, runSpacing: 8,
+                  children: ['OS assignment kal tak urgent', 'Maths exam Monday 9am',
+                    'Submit form today by 5pm', 'DBMS project next week']
+                      .map((ex) => GestureDetector(
+                    onTap: () { _ctrl.text = ex; _parse(); },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppTheme.card,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Text(ex,
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF6C63FF),
-                              fontWeight: FontWeight.w500)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(color: AppTheme.card,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppTheme.border)),
+                      child: Text(ex, style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF6C63FF), fontWeight: FontWeight.w500)),
                     ),
                   )).toList(),
                 ),
               ],
 
-              // ── Review card (appears after parse) ───────────────────────
+              // Review card + extras
               if (_showReview && _parsed != null) ...[
                 const SizedBox(height: 24),
                 _ReviewCard(
-                  parsed: _parsed!,
-                  deadline: _deadline,
-                  priority: _priority,
-                  taskType: _taskType,
-                  subject: _subject,
-                  onPickDeadline: _pickDeadline,
+                  parsed: _parsed!, deadline: _deadline,
+                  priority: _priority, taskType: _taskType, subject: _subject,
+                  onPickDeadline:   _pickDeadline,
                   onPriorityChange: (v) => setState(() => _priority = v),
-                  onTypeChange: (v) => setState(() => _taskType = v),
-                  onSubjectChange: (v) => setState(() => _subject = v),
+                  onTypeChange:     (v) => setState(() => _taskType = v),
+                  onSubjectChange:  (v) => setState(() => _subject = v),
+                ),
+                const SizedBox(height: 16),
+                _RemindersSection(
+                  reminders:      _reminders,
+                  deadline:       _deadline,
+                  onToggle:       (i) => setState(() => _reminders[i].enabled = !_reminders[i].enabled),
+                  onAddCustom:    _addCustomReminder,
+                  onRemoveCustom: (i) => setState(() => _reminders.removeAt(i)),
+                ),
+                const SizedBox(height: 16),
+                _AttachmentSection(
+                  fileName: _attachedFileName,
+                  onPick:   _pickFile,
+                  onRemove: () => setState(() {
+                    _attachedFilePath = null;
+                    _attachedFileName = null;
+                    _attachedFileMime = null;
+                  }),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -307,8 +460,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     onPressed: _saving ? null : _save,
                     child: _saving
                         ? const SizedBox(width: 20, height: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                         : const Text('Save task'),
                   ),
                 ),
@@ -321,286 +473,246 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 }
 
-// ── Review card ──────────────────────────────────────────────────────────
+// ── Stepper column widget (replaces _NumField — no overflow) ──────────────────
 
-class _ReviewCard extends StatelessWidget {
-  final ParsedTask parsed;
-  final DateTime deadline;
-  final String priority;
-  final String taskType;
-  final String subject;
-  final VoidCallback onPickDeadline;
-  final ValueChanged<String> onPriorityChange;
-  final ValueChanged<String> onTypeChange;
-  final ValueChanged<String> onSubjectChange;
+class _StepperColumn extends StatelessWidget {
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
 
-  const _ReviewCard({
-    required this.parsed,
-    required this.deadline,
-    required this.priority,
-    required this.taskType,
-    required this.subject,
-    required this.onPickDeadline,
-    required this.onPriorityChange,
-    required this.onTypeChange,
-    required this.onSubjectChange,
+  const _StepperColumn({
+    required this.label,
+    required this.value,
+    required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    final subjectColor = AppTheme.subjectColor(
-        subject.isNotEmpty ? subject : 'default');
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF888899))),
+        const SizedBox(height: 12),
+        // Up button
+        _StepBtn(
+          icon: Icons.add_rounded,
+          filled: true,
+          onTap: () => onChanged(value + 1),
+        ),
+        const SizedBox(height: 10),
+        Text('$value',
+            style: const TextStyle(
+                fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A2E))),
+        const SizedBox(height: 10),
+        // Down button
+        _StepBtn(
+          icon: Icons.remove_rounded,
+          filled: false,
+          onTap: value > 0 ? () => onChanged(value - 1) : null,
+        ),
+      ],
+    );
+  }
+}
 
-    return Container(
+class _StepBtn extends StatelessWidget {
+  final IconData icon;
+  final bool filled;
+  final VoidCallback? onTap;
+  const _StepBtn({required this.icon, required this.filled, this.onTap});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      width: 44, height: 44,
       decoration: BoxDecoration(
-        color: AppTheme.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
+        color: onTap == null
+            ? const Color(0xFFF5F5F5)
+            : filled
+            ? AppTheme.primary
+            : const Color(0xFFF0F0F5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: onTap == null
+              ? const Color(0xFFE8E8EE)
+              : filled
+              ? AppTheme.primary
+              : const Color(0xFFDDDDE8),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
+      child: Icon(icon,
+          size: 20,
+          color: onTap == null
+              ? Colors.grey.shade300
+              : filled
+              ? Colors.white
+              : const Color(0xFF555566)),
+    ),
+  );
+}
+
+// ── Review card ───────────────────────────────────────────────────────────────
+
+class _ReviewCard extends StatelessWidget {
+  final ParsedTask parsed;
+  final DateTime deadline;
+  final String priority, taskType, subject;
+  final VoidCallback onPickDeadline;
+  final ValueChanged<String> onPriorityChange, onTypeChange, onSubjectChange;
+
+  const _ReviewCard({
+    required this.parsed, required this.deadline,
+    required this.priority, required this.taskType, required this.subject,
+    required this.onPickDeadline, required this.onPriorityChange,
+    required this.onTypeChange, required this.onSubjectChange,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final sc = AppTheme.subjectColor(subject.isNotEmpty ? subject : 'default');
+    return Container(
+      decoration: BoxDecoration(color: AppTheme.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
               color: AppTheme.primary.withValues(alpha: 0.05),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-              ),
-              border: Border(
-                  bottom: BorderSide(color: AppTheme.border)),
-            ),
-            child: Row(children: [
-              const Icon(Icons.auto_awesome_rounded,
-                  size: 14, color: AppTheme.primary),
-              const SizedBox(width: 6),
-              const Text('Review your task',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primary)),
-              const Spacer(),
-              Text('Tap any field to edit',
-                  style: TextStyle(
-                      fontSize: 11, color: Colors.grey.shade400)),
-            ]),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Task name
-                Text(parsed.taskName,
-                    style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF1A1A2E),
-                        letterSpacing: -0.4)),
-
-                const SizedBox(height: 14),
-
-                // Subject + type row
-                Row(children: [
-                  // Subject
-                  GestureDetector(
-                    onTap: () => _editSubject(context),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: subjectColor.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                            color: subjectColor.withValues(alpha: 0.25)),
-                      ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.folder_rounded,
-                            size: 12, color: subjectColor),
-                        const SizedBox(width: 4),
-                        Text(
-                          subject.isEmpty ? 'Add subject' : subject,
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: subject.isEmpty
-                                  ? Colors.grey.shade400
-                                  : subjectColor),
-                        ),
-                      ]),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Task type
-                  GestureDetector(
-                    onTap: () => _editType(context),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(AppTheme.taskTypeIcon(taskType),
-                            size: 12,
-                            color: const Color(0xFF888899)),
-                        const SizedBox(width: 4),
-                        Text(
-                          taskType[0].toUpperCase() + taskType.substring(1),
-                          style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF888899)),
-                        ),
-                      ]),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Priority
-                  GestureDetector(
-                    onTap: () => onPriorityChange(
-                        priority == 'urgent' ? 'normal' : 'urgent'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: priority == 'urgent'
-                            ? const Color(0xFFFFF0EE)
-                            : AppTheme.surface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: priority == 'urgent'
-                              ? const Color(0xFFFFCCBB)
-                              : AppTheme.border,
-                        ),
-                      ),
-                      child: Text(
-                        priority == 'urgent' ? 'Urgent' : 'Normal',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: priority == 'urgent'
-                                ? const Color(0xFF993C1D)
-                                : const Color(0xFF888899)),
-                      ),
-                    ),
-                  ),
-                ]),
-
-                const SizedBox(height: 14),
-
-                // Deadline row
-                GestureDetector(
-                  onTap: onPickDeadline,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Row(children: [
-                      Icon(Icons.calendar_today_rounded,
-                          size: 16,
-                          color: AppTheme.urgencyColor(deadline)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              DateFormat('EEEE, d MMMM yyyy')
-                                  .format(deadline),
-                              style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1A1A2E)),
-                            ),
-                            Text(
-                              DateFormat('h:mm a').format(deadline),
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade500),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (parsed.deadlineLabel != 'Unknown')
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            parsed.deadlineLabel,
-                            style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.primary),
-                          ),
-                        ),
-                      const SizedBox(width: 6),
-                      Icon(Icons.edit_rounded,
-                          size: 14, color: Colors.grey.shade400),
-                    ]),
-                  ),
+                  topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+              border: Border(bottom: BorderSide(color: AppTheme.border))),
+          child: Row(children: [
+            const Icon(Icons.auto_awesome_rounded, size: 14, color: AppTheme.primary),
+            const SizedBox(width: 6),
+            const Text('Review your task',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+            const Spacer(),
+            Text('Tap any field to edit',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(parsed.taskName,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
+                    color: Color(0xFF1A1A2E), letterSpacing: -0.4)),
+            const SizedBox(height: 14),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              GestureDetector(
+                onTap: () => _editSubject(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                      color: sc.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: sc.withValues(alpha: 0.25))),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.folder_rounded, size: 12, color: sc),
+                    const SizedBox(width: 4),
+                    Text(subject.isEmpty ? 'Add subject' : subject,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                            color: subject.isEmpty ? Colors.grey.shade400 : sc)),
+                  ]),
                 ),
-
-                // Notification preview
-                const SizedBox(height: 12),
-                _NotifPreview(deadline: deadline),
-              ],
+              ),
+              GestureDetector(
+                onTap: () => _editType(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.border)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(AppTheme.taskTypeIcon(taskType), size: 12, color: const Color(0xFF888899)),
+                    const SizedBox(width: 4),
+                    Text(taskType[0].toUpperCase() + taskType.substring(1),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF888899))),
+                  ]),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => onPriorityChange(priority == 'urgent' ? 'normal' : 'urgent'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                      color: priority == 'urgent' ? const Color(0xFFFFF0EE) : AppTheme.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: priority == 'urgent' ? const Color(0xFFFFCCBB) : AppTheme.border)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(priority == 'urgent' ? Icons.bolt_rounded : Icons.flag_outlined,
+                        size: 12,
+                        color: priority == 'urgent' ? const Color(0xFF993C1D) : const Color(0xFF888899)),
+                    const SizedBox(width: 4),
+                    Text(priority == 'urgent' ? 'Urgent' : 'Normal',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                            color: priority == 'urgent' ? const Color(0xFF993C1D) : const Color(0xFF888899))),
+                  ]),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: onPickDeadline,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(color: AppTheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.border)),
+                child: Row(children: [
+                  Icon(Icons.calendar_today_rounded, size: 16, color: AppTheme.urgencyColor(deadline)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(DateFormat('EEEE, d MMMM yyyy').format(deadline),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1A1A2E))),
+                    Text(DateFormat('h:mm a').format(deadline),
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                  ])),
+                  if (parsed.deadlineLabel != 'Unknown')
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                          color: AppTheme.primary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(6)),
+                      child: Text(parsed.deadlineLabel,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primary)),
+                    ),
+                  const SizedBox(width: 6),
+                  Icon(Icons.edit_rounded, size: 14, color: Colors.grey.shade400),
+                ]),
+              ),
             ),
-          ),
-        ],
-      ),
+          ]),
+        ),
+      ]),
     );
   }
 
   void _editSubject(BuildContext context) {
     final ctrl = TextEditingController(text: subject);
     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
+      context: context, isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Subject',
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w700)),
+          const Text('Subject', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
-          TextField(
-            controller: ctrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'e.g. Operating Systems, Maths…',
-            ),
-          ),
+          TextField(controller: ctrl, autofocus: true,
+              decoration: const InputDecoration(hintText: 'e.g. Operating Systems, Maths…')),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                onSubjectChange(ctrl.text.trim());
-                Navigator.pop(context);
-              },
-              child: const Text('Done'),
-            ),
-          ),
+          SizedBox(width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () { onSubjectChange(ctrl.text.trim()); Navigator.pop(sheetCtx); },
+                child: const Text('Done'),
+              )),
         ]),
       ),
     );
@@ -613,82 +725,221 @@ class _ReviewCard extends StatelessWidget {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Task type',
-                style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            ...['assignment', 'exam', 'submission', 'reminder', 'meeting']
-                .map((t) => ListTile(
-              leading: Icon(AppTheme.taskTypeIcon(t),
-                  color: AppTheme.primary),
-              title: Text(t[0].toUpperCase() + t.substring(1)),
-              selected: taskType == t,
-              selectedTileColor:
-              AppTheme.primary.withValues(alpha: 0.06),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              onTap: () {
-                onTypeChange(t);
-                Navigator.pop(context);
-              },
-            )),
-          ],
-        ),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Task type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          ...['assignment', 'exam', 'submission', 'reminder', 'meeting'].map((t) => ListTile(
+            leading: Icon(AppTheme.taskTypeIcon(t), color: AppTheme.primary),
+            title: Text(t[0].toUpperCase() + t.substring(1)),
+            selected: taskType == t,
+            selectedTileColor: AppTheme.primary.withValues(alpha: 0.06),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            onTap: () { onTypeChange(t); Navigator.pop(context); },
+          )),
+        ]),
       ),
     );
   }
 }
 
-class _NotifPreview extends StatelessWidget {
+// ── Reminders section ─────────────────────────────────────────────────────────
+
+class _RemindersSection extends StatelessWidget {
+  final List<_Reminder> reminders;
   final DateTime deadline;
-  const _NotifPreview({required this.deadline});
+  final ValueChanged<int> onToggle, onRemoveCustom;
+  final VoidCallback onAddCustom;
+
+  const _RemindersSection({
+    required this.reminders, required this.deadline,
+    required this.onToggle, required this.onAddCustom, required this.onRemoveCustom,
+  });
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final chips = [
-      ('1 day before',
-      deadline.subtract(const Duration(days: 1)).isAfter(now)),
-      ('2 hrs before',
-      deadline.subtract(const Duration(hours: 2)).isAfter(now)),
-      ('At deadline', deadline.isAfter(now)),
-    ];
-    return Row(children: [
-      Icon(Icons.notifications_active_outlined,
-          size: 12, color: Colors.grey.shade400),
-      const SizedBox(width: 5),
-      Text('Reminders:',
-          style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
-      const SizedBox(width: 6),
-      ...chips.map((c) => Padding(
-        padding: const EdgeInsets.only(right: 5),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: 7, vertical: 3),
+    return Container(
+      decoration: BoxDecoration(color: AppTheme.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: c.$2
-                ? AppTheme.primary.withValues(alpha: 0.08)
-                : AppTheme.surface,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: c.$2
-                  ? AppTheme.primary.withValues(alpha: 0.2)
-                  : AppTheme.border,
-            ),
-          ),
-          child: Text(c.$1,
-              style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: c.$2
-                      ? AppTheme.primary
-                      : Colors.grey.shade400)),
+              color: AppTheme.primary.withValues(alpha: 0.05),
+              borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+              border: Border(bottom: BorderSide(color: AppTheme.border))),
+          child: Row(children: [
+            const Icon(Icons.notifications_rounded, size: 14, color: AppTheme.primary),
+            const SizedBox(width: 6),
+            const Text('Reminders',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+            const Spacer(),
+            Text('Tap to toggle',
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
+          ]),
         ),
-      )),
-    ]);
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(children: [
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              ...List.generate(reminders.length, (i) {
+                final r = reminders[i];
+                final when = deadline.subtract(r.offset);
+                final possible = when.isAfter(now);
+                final active = r.enabled && possible;
+                final isCustom = i >= 3;
+                return GestureDetector(
+                  onTap:      possible ? () => onToggle(i) : null,
+                  onLongPress: isCustom ? () => onRemoveCustom(i) : null,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: !possible ? const Color(0xFFF5F5F5)
+                          : active ? AppTheme.primary.withValues(alpha: 0.12)
+                          : const Color(0xFFF0F0F5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: !possible ? const Color(0xFFE0E0E0)
+                            : active ? AppTheme.primary.withValues(alpha: 0.4)
+                            : const Color(0xFFDDDDE8),
+                        width: active ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(
+                        active ? Icons.notifications_active_rounded : Icons.notifications_off_outlined,
+                        size: 12,
+                        color: !possible ? Colors.grey.shade300
+                            : active ? AppTheme.primary : Colors.grey.shade400,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(r.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                            color: !possible ? Colors.grey.shade300
+                                : active ? AppTheme.primary : Colors.grey.shade400,
+                          )),
+                      if (isCustom && possible) ...[
+                        const SizedBox(width: 4),
+                        Icon(Icons.close_rounded, size: 10,
+                            color: active ? AppTheme.primary : Colors.grey.shade400),
+                      ],
+                    ]),
+                  ),
+                );
+              }),
+              GestureDetector(
+                onTap: onAddCustom,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.border)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.add_rounded, size: 12, color: Colors.grey.shade500),
+                    const SizedBox(width: 4),
+                    Text('Custom', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade500)),
+                  ]),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              Icon(Icons.info_outline_rounded, size: 11, color: Colors.grey.shade400),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text('Greyed = not enough time remaining · Long-press custom to remove',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
+              ),
+            ]),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+// ── Attachment section ────────────────────────────────────────────────────────
+
+class _AttachmentSection extends StatelessWidget {
+  final String? fileName;
+  final VoidCallback onPick, onRemove;
+
+  const _AttachmentSection({required this.fileName, required this.onPick, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(color: AppTheme.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.05),
+              borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+              border: Border(bottom: BorderSide(color: AppTheme.border))),
+          child: Row(children: [
+            const Icon(Icons.attach_file_rounded, size: 14, color: AppTheme.primary),
+            const SizedBox(width: 6),
+            const Text('Attach document',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+            const Spacer(),
+            Text('PDF, image, Word', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: fileName == null
+              ? GestureDetector(
+            onTap: onPick,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              decoration: BoxDecoration(color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.border)),
+              child: Column(children: [
+                Icon(Icons.upload_file_rounded, size: 32, color: Colors.grey.shade300),
+                const SizedBox(height: 8),
+                Text('Tap to attach a file',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 4),
+                Text('Will appear in Docs section',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade300)),
+              ]),
+            ),
+          )
+              : Row(children: [
+            Container(width: 44, height: 44,
+              decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.insert_drive_file_rounded, color: AppTheme.primary, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(fileName!,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1A1A2E)),
+                overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: const Color(0xFFFFEEEE),
+                    borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFA32D2D)),
+              ),
+            ),
+          ]),
+        ),
+      ]),
+    );
   }
 }
