@@ -1,25 +1,26 @@
-import 'package:flutter/material.dart';
-import 'screens/home_screen.dart';
+// lib/main.dart
 
-void main() {
-  runApp(const StudentTaskApp());
+import 'package:flutter/material.dart';
+import 'screens/splash_screen.dart';
+import 'services/notification_service.dart';
+import 'theme/app_theme.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.instance.init();
+  runApp(const NudgeApp());
 }
 
-class StudentTaskApp extends StatelessWidget {
-  const StudentTaskApp({super.key});
+class NudgeApp extends StatelessWidget {
+  const NudgeApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Student Tasks',
+      title: 'Nudge',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.indigo,
-        cardColor: Colors.white,
-        scaffoldBackgroundColor: const Color(0xFFF5F6FA),
-      ),
-      home: const HomeScreen(),
+      theme: AppTheme.light,
+      home: const SplashScreen(),
     );
   }
 }
