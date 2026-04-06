@@ -85,19 +85,26 @@ class TaskParser {
   static List<String> _splitMultiTask(String raw) {
     final text = raw.toLowerCase();
 
-    // [F5] Count deadline signals — now includes _dayAfter tokens.
-    int signals = 0;
-    // Check all three relative-day lists
+    // [F5] Count UNIQUE deadline signals — deduplicated so the same word
+    // appearing twice (e.g. "aaj...aaj hi") doesn't inflate the count.
+    final foundSignals = <String>{};
     for (final w in [..._today, ..._tomorrow, ..._dayAfter]) {
-      if (_has(text, w)) { signals++; if (signals >= 2) break; }
+      if (_has(text, w)) foundSignals.add(w);
     }
-    if (signals < 2) {
-      // Also check weekdays
-      for (final w in _weekdays.keys) {
-        if (_has(text, w)) { signals++; if (signals >= 2) break; }
-      }
+    for (final w in _weekdays.keys) {
+      if (_has(text, w)) foundSignals.add(w);
     }
-    signals += _monthRe.allMatches(text).length;
+    // Month names count as individual signals
+    int monthSignals = _monthRe.allMatches(text).length;
+
+    // Map each found signal to its weekday int (or -1) so overlapping signals
+    // (e.g. "pudhcha somwar" + "somwar") count as ONE deadline, not two.
+    final uniqueDays = <int>{};
+    for (final s in foundSignals) {
+      final wd = _weekdays[s];
+      if (wd != null) uniqueDays.add(wd); else uniqueDays.add(s.hashCode + 100);
+    }
+    final signals = uniqueDays.length + monthSignals;
 
     if (signals < 2) return [raw];
 
@@ -107,7 +114,18 @@ class TaskParser {
         .map((p) => p.trim())
         .where((p) => p.length > 5)
         .toList();
-    return parts.length >= 2 ? parts : [raw];
+
+    // Each part must contain at least one deadline signal to be a real subtask.
+    // If only one part has a deadline, it's a single task with a comma.
+    if (parts.length < 2) return [raw];
+    final partsWithDeadline = parts.where((p) {
+      final pt = p.toLowerCase();
+      return [..._today, ..._tomorrow, ..._dayAfter, ..._weekdays.keys]
+          .any((w) => _has(pt, w)) || _monthRe.hasMatch(pt);
+    }).length;
+    if (partsWithDeadline < 2) return [raw];
+
+    return parts;
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -219,6 +237,24 @@ class TaskParser {
     'sun':            DateTime.sunday,
     'raviwar':        DateTime.sunday,
     'ravivaar':       DateTime.sunday,
+  };
+
+  /// Maps any Hinglish/Marathi weekday key to its canonical English label.
+  static const Map<String, String> _weekdayLabel = {
+    'monday': 'Monday',   'mon': 'Monday',
+    'somwar': 'Monday',   'somvaar': 'Monday',   'pudhcha somwar': 'Monday',
+    'tuesday': 'Tuesday', 'tue': 'Tuesday',
+    'mangalwar': 'Tuesday', 'mangalvaar': 'Tuesday',
+    'wednesday': 'Wednesday', 'wed': 'Wednesday',
+    'budhwar': 'Wednesday',   'budhvaar': 'Wednesday',
+    'thursday': 'Thursday', 'thu': 'Thursday', 'thurs': 'Thursday',
+    'guruwar': 'Thursday',  'guruvaar': 'Thursday',
+    'friday': 'Friday',   'fri': 'Friday',
+    'shukrawar': 'Friday', 'shukravaar': 'Friday',
+    'saturday': 'Saturday', 'sat': 'Saturday',
+    'shaniwar': 'Saturday', 'shanivaar': 'Saturday',
+    'sunday': 'Sunday',   'sun': 'Sunday',
+    'raviwar': 'Sunday',  'ravivaar': 'Sunday',
   };
 
   // ── Month names ────────────────────────────────────────────────
@@ -376,9 +412,17 @@ class TaskParser {
   // ═══════════════════════════════════════════════════════════════
 
   static String _detectType(String text) {
+    // Check longer keywords first within each type to avoid false substring hits.
+    // Use word-boundary regex for all keywords to prevent partial-word matches
+    // (e.g. 'ut' inside 'budhwar', 'lab' inside 'syllabus').
     for (final e in _types.entries) {
-      for (final kw in e.value) {
-        if (text.contains(kw)) return e.key;
+      // Sort keywords longest-first so "unit test" beats "test", "class test" beats "test"
+      final sorted = [...e.value]..sort((a, b) => b.length.compareTo(a.length));
+      for (final kw in sorted) {
+        final pattern = kw.contains(' ')
+            ? RegExp(RegExp.escape(kw), caseSensitive: false)
+            : RegExp('\\b${RegExp.escape(kw)}\\b', caseSensitive: false);
+        if (pattern.hasMatch(text)) return e.key;
       }
     }
     return 'assignment';
@@ -578,7 +622,9 @@ class TaskParser {
       final wday  = _weekdays[day]!;
       final force = mod == 'next' || mod == 'aagla' || mod == 'pudhcha';
       final d     = _nextWD(now, wday, forceNext: force);
-      final label = '${_cap(mod)} ${_cap(day)}';
+      final englishDay = _weekdayLabel[day] ?? _cap(day);
+      final modLabel = (mod == 'next') ? 'Next' : (mod == 'this') ? 'This' : 'Next';
+      final label = '$modLabel $englishDay';
       return {'deadline': dt(d), 'label': label};
     }
 
@@ -591,15 +637,19 @@ class TaskParser {
     if (pM != null) {
       final day = pM.group(1)!.toLowerCase();
       final d   = _nextWD(now, _weekdays[day]!);
-      return {'deadline': dt(d), 'label': _cap(day)};
+      return {'deadline': dt(d), 'label': _weekdayLabel[day] ?? _cap(day)};
     }
 
     // ── Plain weekday ─────────────────────────────────────────
-    for (final e in _weekdays.entries) {
+    // Sort longest key first so multi-word entries (e.g. "pudhcha somwar")
+    // are tested before their substrings ("somwar").
+    final sortedWD = _weekdays.entries.toList()
+      ..sort((a, b) => b.key.length.compareTo(a.key.length));
+    for (final e in sortedWD) {
       if (RegExp('\\b${RegExp.escape(e.key)}\\b',
           caseSensitive: false).hasMatch(text)) {
         final d = _nextWD(now, e.value);
-        return {'deadline': dt(d), 'label': '${_cap(e.key)}$tStr'};
+        return {'deadline': dt(d), 'label': '${_weekdayLabel[e.key] ?? _cap(e.key)}$tStr'};
       }
     }
 
@@ -685,7 +735,7 @@ class TaskParser {
 
     // ── Fallback ──────────────────────────────────────────────
     return {
-      'deadline': DateTime(now.year,now.month,now.day+1, _defH(type), _defM(type)),
+      'deadline': DateTime(now.year, now.month, now.day + 1, h, m),
       'label': 'Unknown',
     };
   }
@@ -749,17 +799,9 @@ class TaskParser {
           RegExp('\\b${RegExp.escape(w)}\\b', caseSensitive: false), ' ');
     }
 
-    // Remove subject keywords
-    if (subject.isNotEmpty) {
-      for (final e in _subjects.entries) {
-        if (e.key == subject) {
-          for (final kw in e.value) {
-            name = name.replaceAll(
-                RegExp('\\b${RegExp.escape(kw)}\\b', caseSensitive: false), ' ');
-          }
-        }
-      }
-    }
+    // NOTE: Subject keywords are intentionally NOT stripped from the name.
+    // The subject is stored in its own field; keeping it in the name
+    // produces more descriptive labels like "OS Assignment" or "DBMS Project".
 
     // Strip punctuation, collapse spaces
     name = name.replaceAll(RegExp(r"[^\w\s']"), ' ')
