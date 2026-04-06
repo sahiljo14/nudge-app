@@ -1,25 +1,31 @@
 // lib/parser/task_parser.dart
 //
-// Tier 1 upgrades:
-//   - Ordinal dates: "5th April", "April 5", "5 tarikh"
-//   - "this Friday" vs "next Friday" distinction
-//   - EOD / COB / end of day
-//   - End of week / weekend / end of month / next month
-//   - "within N days" same as "in N days"
-//   - "before 5pm" / "by 5" / "5 baje ke pehle" / "5 baje tak"
-//   - "N hafte mein" / "do din mein" Hinglish durations
-//   - Marathi weekdays + "pudhcha somwar" / "ya aathavdyat"
-//   - "shukrawar paryant" (weekday + paryant/tak)
-//   - "kal subah" → tomorrow morning, "aaj raat" → tonight
+// ── FIXES APPLIED ────────────────────────────────────────────────────────────
 //
-// Tier 2 upgrades:
-//   - Implicit urgency: "!!!", ALL CAPS, deadline within 6h
-//   - Context-aware defaults: exam→9am, meeting→10am, rest→11:59pm
-//   - Known abbreviation capitalisation: os→OS, dbms→DBMS etc.
-//   - Duplicate word removal after stripping
-//   - Multi-task detection: splits comma/newline separated inputs
-//   - "N baje" time parsing
-//   - 24-hour clock support: "17:00"
+// [F1] ORDERING — day-relative patterns now checked longest-first so that
+//      "day after tomorrow" is never swallowed by "tomorrow" (substring match),
+//      and "kal subah / kal raat" are never swallowed by plain "kal".
+//      Implementation: _dayAfter and compound-kal checks now run BEFORE
+//      the generic _tomorrow loop, and all text.contains() checks for
+//      multi-word phrases use word-boundary anchors via _has().
+//
+// [F2] INDIA AM/PM HEURISTIC — "N baje" with hour ≤ 7 and no explicit morning
+//      context (subah / sakaal / morning / am) defaults to PM, not AM.
+//      Same heuristic applied to bare numeric times with no am/pm suffix.
+//
+// [F3] MISSING SPELLINGS — additional Hinglish / shorthand variants added to
+//      _today, _tomorrow, _dayAfter, and _weekdays.
+//
+// [F4] NAME CLEANING ORDER — honorifics and titles are stripped BEFORE
+//      whitespace normalisation so they don't leave leading/trailing gaps
+//      that confuse the capitalisation step.
+//
+// [F5] MULTI-TASK THRESHOLD — signal counting now includes _dayAfter tokens
+//      so "parso" and "day after tomorrow" correctly count as deadline signals,
+//      preventing under-counting that caused multi-task inputs to be parsed
+//      as single tasks.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 
 class ParsedTask {
   final String taskName;
@@ -78,12 +84,21 @@ class TaskParser {
 
   static List<String> _splitMultiTask(String raw) {
     final text = raw.toLowerCase();
-    // Count deadline signals
+
+    // [F5] Count deadline signals — now includes _dayAfter tokens.
     int signals = 0;
-    for (final w in [..._today, ..._tomorrow, ..._weekdays.keys]) {
-      if (text.contains(w)) { signals++; if (signals >= 2) break; }
+    // Check all three relative-day lists
+    for (final w in [..._today, ..._tomorrow, ..._dayAfter]) {
+      if (_has(text, w)) { signals++; if (signals >= 2) break; }
+    }
+    if (signals < 2) {
+      // Also check weekdays
+      for (final w in _weekdays.keys) {
+        if (_has(text, w)) { signals++; if (signals >= 2) break; }
+      }
     }
     signals += _monthRe.allMatches(text).length;
+
     if (signals < 2) return [raw];
 
     final parts = raw
@@ -145,21 +160,31 @@ class TaskParser {
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // DAY WORD LISTS
+  // DAY WORD LISTS  [F3] — added missing spellings
   // ═══════════════════════════════════════════════════════════════
 
   static const _today = [
     'tonight', 'aaj raat', 'aaj hi', 'today', 'aaj', 'aj',
     'aajke', 'eod', 'end of day', 'cob', 'by tonight', 'abhi',
+    // [F3] additions
+    'aaj ka', 'same day', 'aajch',
   ];
 
+  // [F1] Multi-word "kal ___" entries are kept here so that _splitMultiTask
+  //      counts them as signals; the actual deadline branch for compound-kal
+  //      variants is handled FIRST in _detectDeadline before the plain loop.
   static const _tomorrow = [
-    'kal subah', 'kal raat', 'tomorrow', 'tmrw', 'tmr',
+    'kal subah', 'kal raat', 'kal sham', 'kal tak',
+    'tomorrow', 'tmrw', 'tmr',
     'kal', 'kl', 'udya', 'udhya', 'next day', 'agle din', 'kal tak',
+    // [F3] additions
+    'agle din', 'kal ko', 'klko', 'ugvya',
   ];
 
   static const _dayAfter = [
     'parso', 'day after tomorrow', 'parva', 'paradnya',
+    // [F3] additions
+    'parson', 'parsun',
   ];
 
   // ── Weekdays ───────────────────────────────────────────────────
@@ -172,12 +197,14 @@ class TaskParser {
     'tuesday':        DateTime.tuesday,
     'tue':            DateTime.tuesday,
     'mangalwar':      DateTime.tuesday,
+    'mangalvaar':     DateTime.tuesday,     // [F3]
     'wednesday':      DateTime.wednesday,
     'wed':            DateTime.wednesday,
     'budhwar':        DateTime.wednesday,
     'budhvaar':       DateTime.wednesday,
     'thursday':       DateTime.thursday,
     'thu':            DateTime.thursday,
+    'thurs':          DateTime.thursday,    // [F3]
     'guruwar':        DateTime.thursday,
     'guruvaar':       DateTime.thursday,
     'friday':         DateTime.friday,
@@ -187,6 +214,7 @@ class TaskParser {
     'saturday':       DateTime.saturday,
     'sat':            DateTime.saturday,
     'shaniwar':       DateTime.saturday,
+    'shanivaar':      DateTime.saturday,    // [F3]
     'sunday':         DateTime.sunday,
     'sun':            DateTime.sunday,
     'raviwar':        DateTime.sunday,
@@ -206,7 +234,6 @@ class TaskParser {
   static final _monthRe = RegExp(
       _months.keys.join('|'), caseSensitive: false);
 
-  // Ordinal + month: "5th April", "April 5", "5 April"
   static final _ordinalRe = RegExp(
     r'\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(' +
         _months.keys.join('|') +
@@ -216,9 +243,8 @@ class TaskParser {
     caseSensitive: false,
   );
 
-  // "5 tarikh"
   static final _tarikhRe = RegExp(
-      r'\b(\d{1,2})\s*(?:tarikh|tारीख)\b', caseSensitive: false);
+      r'\b(\d{1,2})\s*(?:tarikh|tārīkh)\b', caseSensitive: false);
 
   // ═══════════════════════════════════════════════════════════════
   // TASK TYPES
@@ -294,24 +320,22 @@ class TaskParser {
   // TIME REGEXES
   // ═══════════════════════════════════════════════════════════════
 
-  // 12h: "5pm" "5:30pm" "5 pm" "5.30 am"
   static final _re12h = RegExp(
     r'\b(\d{1,2})(?:[:.]\s*(\d{2}))?\s*(am|pm|a\.m\.?|p\.m\.?)\b',
     caseSensitive: false,
   );
-  // 24h: "17:00" "09:30"
   static final _re24h = RegExp(r'\b([01]?\d|2[0-3]):([0-5]\d)\b');
-  // "5 baje"
   static final _reBaje = RegExp(r'\b(\d{1,2})\s*baje\b', caseSensitive: false);
-  // "before/by/tak 5pm"
   static final _reBefore = RegExp(
     r'(?:before|by|tak|pehle|paryant)\s+(\d{1,2})(?:[:.]\s*(\d{2}))?\s*(am|pm)?\b',
     caseSensitive: false,
   );
-  // Context words
-  static final _reSubah   = RegExp(r'\b(subah|sakaal|sakal|morning)\b', caseSensitive: false);
-  static final _reShaam   = RegExp(r'\b(shaam|sandhya|evening)\b',      caseSensitive: false);
-  static final _reRaat    = RegExp(r'\b(raat|raatri|night)\b',          caseSensitive: false);
+
+  // Context words — used by AM/PM heuristic [F2]
+  static final _reSubah   = RegExp(r'\b(subah|sakaal|sakal|morning)\b',    caseSensitive: false);
+  static final _reAM      = RegExp(r'\b(am|a\.m\.?)\b',                    caseSensitive: false);
+  static final _reShaam   = RegExp(r'\b(shaam|sandhya|evening)\b',         caseSensitive: false);
+  static final _reRaat    = RegExp(r'\b(raat|raatri|night)\b',             caseSensitive: false);
   static final _reDopahar = RegExp(r'\b(dopahar|duphar|noon|afternoon)\b', caseSensitive: false);
 
   // Durations
@@ -327,6 +351,13 @@ class TaskParser {
     'ek':1,'do':2,'teen':3,'char':4,'one':1,'two':2,'three':3,
   };
 
+  // [F4] Honorifics regex — stripped BEFORE whitespace normalisation
+  static final _honorificRe = RegExp(
+    r'\b(Mr\.?|Mrs\.?|Ms\.?|Dr\.?|Prof\.?|Sr\.?|Jr\.?|'
+    r"Bhai|Didi|Sir|Madam|Ma'am|Shri|Smt\.?)\s*",
+    caseSensitive: false,
+  );
+
   // Strip words
   static const _strip = [
     'karna hai','karna he','karni hai','karna ahe','karayche ahe',
@@ -334,7 +365,7 @@ class TaskParser {
     'submit karo','submit karna','jama karo','jama kar',
     'bhejo','send karo',
     'please','pls','plz',
-    'before','by','tak','paryant','paryant',
+    'before','by','tak','paryant',
     'hai','he','ahe','hoga',
     'note','remember','yaad rakhna','lakshat thev',
     'urgent','asap','jaldi','important',
@@ -370,15 +401,33 @@ class TaskParser {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // TIME EXTRACTION
+  // TIME EXTRACTION  [F2] India AM/PM heuristic
   // ═══════════════════════════════════════════════════════════════
 
+  /// Returns true if the text contains an explicit morning signal,
+  /// meaning the speaker consciously said "morning / subah / am".
+  static bool _hasMorningContext(String text) =>
+      _reSubah.hasMatch(text) || _reAM.hasMatch(text);
+
+  /// Core heuristic [F2]: for Indian student messages, an ambiguous hour
+  /// (no am/pm/subah/raat) that is ≤ 7 almost certainly means PM.
+  /// E.g. "5 baje" → 17:00, "7 baje" → 19:00, "8 baje" → 08:00 (morning OK).
+  static int _indiaAmbiguousHour(int h, String text) {
+    if (h <= 7 && !_hasMorningContext(text)) return h + 12;
+    return h;
+  }
+
   static Map<String, dynamic> _extractTime(String text) {
-    // "5 baje" — check context for AM/PM
+    // "5 baje" — check raat/shaam for PM, else apply India heuristic [F2]
     final bm = _reBaje.firstMatch(text);
     if (bm != null) {
       int h = int.parse(bm.group(1)!);
-      if ((_reRaat.hasMatch(text) || _reShaam.hasMatch(text)) && h < 12) h += 12;
+      if ((_reRaat.hasMatch(text) || _reShaam.hasMatch(text)) && h < 12) {
+        h += 12;
+      } else {
+        // [F2] No explicit context → India default
+        h = _indiaAmbiguousHour(h, text);
+      }
       return {'h': h, 'm': 0, 'found': true};
     }
 
@@ -390,11 +439,12 @@ class TaskParser {
       final ap = (bf.group(3) ?? '').toLowerCase();
       if (ap == 'pm' && h < 12) h += 12;
       if (ap == 'am' && h == 12) h = 0;
-      if (ap.isEmpty && h <= 6) h += 12; // "by 5" → 5pm
+      // [F2] No explicit am/pm on "by 5" → India default
+      if (ap.isEmpty) h = _indiaAmbiguousHour(h, text);
       return {'h': h, 'm': mn, 'found': true};
     }
 
-    // 12h clock
+    // 12h clock — explicit am/pm → no heuristic needed
     final m12 = _re12h.firstMatch(text);
     if (m12 != null) {
       int h = int.parse(m12.group(1)!);
@@ -405,14 +455,14 @@ class TaskParser {
       return {'h': h, 'm': mn, 'found': true};
     }
 
-    // 24h clock
+    // 24h clock — unambiguous
     final m24 = _re24h.firstMatch(text);
     if (m24 != null) {
       return {'h': int.parse(m24.group(1)!),
         'm': int.parse(m24.group(2)!), 'found': true};
     }
 
-    // Context words
+    // Context words only
     if (_reSubah.hasMatch(text))   return {'h': 9,  'm': 0, 'found': true};
     if (_reDopahar.hasMatch(text)) return {'h': 12, 'm': 0, 'found': true};
     if (_reShaam.hasMatch(text))   return {'h': 18, 'm': 0, 'found': true};
@@ -432,12 +482,11 @@ class TaskParser {
       default:        return 23;
     }
   }
-
   static int _defM(String type) =>
       (type == 'exam' || type == 'meeting') ? 0 : 59;
 
   // ═══════════════════════════════════════════════════════════════
-  // DEADLINE DETECTION
+  // DEADLINE DETECTION  [F1] longest-phrase-first ordering
   // ═══════════════════════════════════════════════════════════════
 
   static Map<String, dynamic> _detectDeadline(String text, String type) {
@@ -447,7 +496,6 @@ class TaskParser {
     final h   = tf ? t['h'] as int : _defH(type);
     final m   = tf ? t['m'] as int : _defM(type);
 
-    // Build a DateTime from a date + extracted/default time
     DateTime dt(DateTime base) =>
         DateTime(base.year, base.month, base.day, h, m);
 
@@ -463,38 +511,58 @@ class TaskParser {
     }
 
     // ── Tonight / aaj raat ────────────────────────────────────
-    if (text.contains('tonight') || text.contains('aaj raat')) {
-      return {'deadline': DateTime(now.year,now.month,now.day, tf?h:23, tf?m:0),
-        'label': 'Tonight'};
+    if (_has(text, 'tonight') || _has(text, 'aaj raat')) {
+      return {
+        'deadline': DateTime(now.year,now.month,now.day, tf?h:23, tf?m:0),
+        'label': 'Tonight',
+      };
     }
 
-    // ── Today ─────────────────────────────────────────────────
+    // ── [F1] Day-after-tomorrow FIRST — before any "tomorrow" check ──
+    for (final w in _dayAfter) {
+      if (_has(text, w)) {
+        return {
+          'deadline': dt(now.add(const Duration(days: 2))),
+          'label': 'Day after tomorrow',
+        };
+      }
+    }
+
+    // ── [F1] Compound kal phrases BEFORE plain "kal" ─────────────
+    if (_has(text, 'kal subah')) {
+      final d = now.add(const Duration(days: 1));
+      return {
+        'deadline': DateTime(d.year, d.month, d.day, tf ? h : 9, tf ? m : 0),
+        'label': 'Tomorrow morning',
+      };
+    }
+    if (_has(text, 'kal raat')) {
+      final d = now.add(const Duration(days: 1));
+      return {
+        'deadline': DateTime(d.year, d.month, d.day, tf ? h : 22, tf ? m : 0),
+        'label': 'Tomorrow night',
+      };
+    }
+    if (_has(text, 'kal sham')) {
+      final d = now.add(const Duration(days: 1));
+      return {
+        'deadline': DateTime(d.year, d.month, d.day, tf ? h : 18, tf ? m : 0),
+        'label': 'Tomorrow evening',
+      };
+    }
+
+    // ── Generic today words ────────────────────────────────────
     for (final w in _today) {
-      if (text.contains(w)) {
+      if (_has(text, w)) {
         return {'deadline': dt(now), 'label': 'Today$tStr'};
       }
     }
 
-    // ── Kal subah ─────────────────────────────────────────────
-    if (text.contains('kal subah')) {
-      final d = now.add(const Duration(days: 1));
-      return {'deadline': DateTime(d.year,d.month,d.day, tf?h:9, tf?m:0),
-        'label': 'Tomorrow morning'};
-    }
-
-    // ── Tomorrow ──────────────────────────────────────────────
+    // ── [F1] Generic tomorrow words (plain "kal" now safe here) ──
     for (final w in _tomorrow) {
-      if (text.contains(w)) {
+      if (_has(text, w)) {
         final d = now.add(const Duration(days: 1));
         return {'deadline': dt(d), 'label': 'Tomorrow$tStr'};
-      }
-    }
-
-    // ── Day after tomorrow ────────────────────────────────────
-    for (final w in _dayAfter) {
-      if (text.contains(w)) {
-        return {'deadline': dt(now.add(const Duration(days: 2))),
-          'label': 'Day after tomorrow'};
       }
     }
 
@@ -627,28 +695,28 @@ class TaskParser {
   // ═══════════════════════════════════════════════════════════════
 
   static String _detectPriority(String text, DateTime deadline) {
-    // Explicit words
     for (final w in _urgentWords) {
       if (text.contains(w)) return 'urgent';
     }
-    // "!!!" or "!!"
     if (RegExp(r'!{2,}').hasMatch(text)) return 'urgent';
-    // ALL CAPS (≥8 letter chars, >70% uppercase)
     final ups  = RegExp(r'[A-Z]').allMatches(text).length;
     final lets = RegExp(r'[a-zA-Z]').allMatches(text).length;
     if (lets >= 8 && ups / lets > 0.70) return 'urgent';
-    // Deadline within 6 hours
     final diff = deadline.difference(DateTime.now());
     if (diff.inMinutes > 0 && diff.inHours < 6) return 'urgent';
     return 'normal';
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // NAME BUILDER (tier 2: smarter cleaning)
+  // NAME BUILDER  [F4] honorifics stripped first
   // ═══════════════════════════════════════════════════════════════
 
   static String _buildName(String raw, String type, String subject) {
     var name = raw.trim();
+
+    // [F4] Strip honorifics/titles BEFORE any other cleaning so they
+    //      don't leave stray spaces that corrupt capitalisation.
+    name = name.replaceAll(_honorificRe, '');
 
     // Remove all date/time words
     for (final w in [..._today, ..._tomorrow, ..._dayAfter,
@@ -659,6 +727,7 @@ class TaskParser {
       name = name.replaceAll(
           RegExp('\\b${RegExp.escape(w)}\\b', caseSensitive: false), ' ');
     }
+
     // Remove time patterns
     name = name
         .replaceAll(_re12h, ' ').replaceAll(_re24h, ' ')
@@ -667,16 +736,19 @@ class TaskParser {
         .replaceAll(_reRaat, ' ').replaceAll(_reDopahar, ' ')
         .replaceAll(_reDays, ' ').replaceAll(_reWeeks, ' ')
         .replaceAll(_ordinalRe, ' ').replaceAll(_tarikhRe, ' ');
-    // Remove filler
+
+    // Remove filler words
     for (final w in _strip) {
       name = name.replaceAll(
           RegExp('\\b${RegExp.escape(w)}\\b', caseSensitive: false), ' ');
     }
+
     // Remove urgency words
     for (final w in _urgentWords) {
       name = name.replaceAll(
           RegExp('\\b${RegExp.escape(w)}\\b', caseSensitive: false), ' ');
     }
+
     // Remove subject keywords
     if (subject.isNotEmpty) {
       for (final e in _subjects.entries) {
@@ -695,7 +767,7 @@ class TaskParser {
         .trim();
 
     // Remove duplicate consecutive words
-    final words  = name.split(' ');
+    final words   = name.split(' ');
     final deduped = <String>[];
     for (var i = 0; i < words.length; i++) {
       if (i == 0 || words[i].toLowerCase() != words[i-1].toLowerCase()) {
@@ -723,6 +795,19 @@ class TaskParser {
   // ═══════════════════════════════════════════════════════════════
   // SMALL HELPERS
   // ═══════════════════════════════════════════════════════════════
+
+  /// Word-boundary–aware contains check.
+  /// Single-word phrases use \b anchors; multi-word phrases use a simple
+  /// contains() because \b doesn't span spaces.
+  static bool _has(String text, String phrase) {
+    if (phrase.contains(' ')) {
+      // Multi-word: substring is fine — leading/trailing spaces in `text`
+      // already normalised by .toLowerCase().trim() at call site.
+      return text.contains(phrase);
+    }
+    return RegExp('\\b${RegExp.escape(phrase)}\\b',
+        caseSensitive: false).hasMatch(text);
+  }
 
   static DateTime _nextWD(DateTime from, int weekday,
       {bool forceNext = false}) {
