@@ -56,7 +56,7 @@ Nudge turns any unstructured input into a clean, organized task with a deadline 
 
 ### Run locally
 ```bash
-git clone https://github.com/yourusername/nudge-app.git
+git clone https://github.com/sahiljo14/nudge-app.git
 cd nudge-app
 flutter pub get
 flutter run
