@@ -5,6 +5,9 @@ import 'screens/splash_screen.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 
+// ── Global theme notifier ─────────────────────────────────────────────────────
+final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.init();
@@ -16,11 +19,16 @@ class NudgeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Nudge',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      home: const SplashScreen(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (_, mode, __) => MaterialApp(
+        title: 'Nudge',
+        debugShowCheckedModeBanner: false,
+        theme:      AppTheme.light,
+        darkTheme:  AppTheme.dark,
+        themeMode:  mode,
+        home: const SplashScreen(),
+      ),
     );
   }
 }

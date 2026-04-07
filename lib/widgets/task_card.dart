@@ -32,25 +32,22 @@ class TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark       = Theme.of(context).brightness == Brightness.dark;
     final subjectColor = AppTheme.subjectColor(task.subject);
-    final urgColor =
-    task.isDone ? const Color(0xFF3B6D11) : AppTheme.urgencyColor(task.deadline);
-    final isDone = task.isDone;
-    final accentColor = isDone ? const Color(0xFFCCCCD8) : subjectColor;
+    final urgColor     =
+    task.isDone ? AppTheme.calm : AppTheme.urgencyColor(task.deadline);
+    final isDone       = task.isDone;
+    final accentColor  = isDone ? AppTheme.subtext(isDark) : subjectColor;
 
-    // ── Use Stack to draw the left accent bar so we keep borderRadius ────────
-    // Mixing asymmetric Border() with borderRadius on BoxDecoration breaks
-    // rendering in Flutter — the whole card becomes invisible.
     final cardContent = ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Stack(
         children: [
-          // Card background + uniform border
           Container(
             decoration: BoxDecoration(
-              color: AppTheme.card,
+              color: AppTheme.card(isDark),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppTheme.border),
+              border: Border.all(color: AppTheme.border(isDark)),
             ),
             child: Padding(
               // Extra left padding to make room for the accent bar
@@ -95,10 +92,10 @@ class TaskCard extends StatelessWidget {
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
                                 color: isDone
-                                    ? const Color(0xFFAAAAB5)
-                                    : const Color(0xFF1A1A2E),
+                                    ? AppTheme.subtext(isDark)
+                                    : AppTheme.text(isDark),
                                 decoration: isDone ? TextDecoration.lineThrough : null,
-                                decorationColor: const Color(0xFFAAAAB5),
+                                decorationColor: AppTheme.subtext(isDark),
                                 letterSpacing: -0.2,
                               ),
                             ),

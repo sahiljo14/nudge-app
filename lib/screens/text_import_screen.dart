@@ -105,11 +105,12 @@ class _TextImportScreenState extends State<TextImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final subColor = AppTheme.subjectColor(
         _subject.isNotEmpty ? _subject : 'default');
 
     return Scaffold(
-      backgroundColor: AppTheme.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Shared message'),
         leading: IconButton(
@@ -138,9 +139,9 @@ class _TextImportScreenState extends State<TextImportScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: AppTheme.card,
+                color: Theme.of(context).cardTheme.color ?? AppTheme.lightCard,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.border),
+                border: Border.all(color: AppTheme.border(Theme.of(context).brightness == Brightness.dark)),
               ),
               child: Text(widget.sharedText,
                   style: const TextStyle(
@@ -184,7 +185,7 @@ class _TextImportScreenState extends State<TextImportScreen> {
             ]),
 
             const SizedBox(height: 24),
-            const Divider(color: AppTheme.border),
+            Divider(color: AppTheme.border(Theme.of(context).brightness == Brightness.dark)),
             const SizedBox(height: 16),
 
             // ── Task name ─────────────────────────────────────────────
@@ -219,12 +220,12 @@ class _TextImportScreenState extends State<TextImportScreen> {
                         horizontal: 12, vertical: 12),
                     decoration: BoxDecoration(
                       color: _subject.isEmpty
-                          ? AppTheme.card
+                          ? AppTheme.lightCard
                           : subColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: _subject.isEmpty
-                            ? AppTheme.border
+                            ? AppTheme.border(isDark)
                             : subColor.withValues(alpha: 0.3),
                       ),
                     ),
@@ -261,12 +262,12 @@ class _TextImportScreenState extends State<TextImportScreen> {
                   decoration: BoxDecoration(
                     color: _priority == 'urgent'
                         ? const Color(0xFFFFF0EE)
-                        : AppTheme.card,
+                        : AppTheme.lightCard,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: _priority == 'urgent'
                           ? const Color(0xFFFFCCBB)
-                          : AppTheme.border,
+                          : AppTheme.border(isDark),
                     ),
                   ),
                   child: Text(
@@ -291,9 +292,9 @@ class _TextImportScreenState extends State<TextImportScreen> {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 14, vertical: 14),
                 decoration: BoxDecoration(
-                  color: AppTheme.card,
+                  color: Theme.of(context).cardTheme.color ?? AppTheme.lightCard,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.border),
+                  border: Border.all(color: AppTheme.border(Theme.of(context).brightness == Brightness.dark)),
                 ),
                 child: Row(children: [
                   Icon(Icons.calendar_today_rounded,
@@ -365,7 +366,7 @@ class _TextImportScreenState extends State<TextImportScreen> {
                 ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF888899),
-                  side: const BorderSide(color: AppTheme.border),
+                  side: BorderSide(color: AppTheme.border(Theme.of(context).brightness == Brightness.dark)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),

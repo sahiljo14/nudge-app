@@ -118,11 +118,12 @@ class _DocImportScreenState extends State<DocImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final subColor =
     AppTheme.subjectColor(_subject.isNotEmpty ? _subject : 'default');
 
     return Scaffold(
-      backgroundColor: AppTheme.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(_isPdf ? 'PDF document' : 'Image'),
         leading: IconButton(
@@ -144,9 +145,9 @@ class _DocImportScreenState extends State<DocImportScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: AppTheme.card,
+                color: Theme.of(context).cardTheme.color ?? AppTheme.lightCard,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.border),
+                border: Border.all(color: AppTheme.border(isDark)),
               ),
               child: Column(children: [
                 Icon(
@@ -192,11 +193,11 @@ class _DocImportScreenState extends State<DocImportScreen> {
 
             Container(
               decoration: BoxDecoration(
-                color: AppTheme.card,
+                color: Theme.of(context).cardTheme.color ?? AppTheme.lightCard,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color:
-                  _showTask ? AppTheme.primary : AppTheme.border,
+                  _showTask ? AppTheme.primary : AppTheme.border(isDark),
                   width: _showTask ? 2 : 1,
                 ),
               ),
@@ -221,7 +222,7 @@ class _DocImportScreenState extends State<DocImportScreen> {
                       horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     border: Border(
-                        top: BorderSide(color: AppTheme.border)),
+                        top: BorderSide(color: AppTheme.border(isDark))),
                   ),
                   child: Row(children: [
                     Text('Just describe it naturally',
@@ -253,7 +254,7 @@ class _DocImportScreenState extends State<DocImportScreen> {
             // ── Task review ────────────────────────────────────────────
             if (_showTask) ...[
               const SizedBox(height: 20),
-              const Divider(color: AppTheme.border),
+              Divider(color: AppTheme.border(isDark)),
               const SizedBox(height: 16),
 
               // Task name
@@ -287,12 +288,12 @@ class _DocImportScreenState extends State<DocImportScreen> {
                           horizontal: 12, vertical: 12),
                       decoration: BoxDecoration(
                         color: _subject.isEmpty
-                            ? AppTheme.card
+                            ? AppTheme.lightCard
                             : subColor.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: _subject.isEmpty
-                              ? AppTheme.border
+                              ? AppTheme.border(isDark)
                               : subColor.withValues(alpha: 0.3),
                         ),
                       ),
@@ -329,12 +330,12 @@ class _DocImportScreenState extends State<DocImportScreen> {
                     decoration: BoxDecoration(
                       color: _priority == 'urgent'
                           ? const Color(0xFFFFF0EE)
-                          : AppTheme.card,
+                          : AppTheme.lightCard,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: _priority == 'urgent'
                             ? const Color(0xFFFFCCBB)
-                            : AppTheme.border,
+                            : AppTheme.border(isDark),
                       ),
                     ),
                     child: Text(
@@ -359,9 +360,9 @@ class _DocImportScreenState extends State<DocImportScreen> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 14),
                   decoration: BoxDecoration(
-                    color: AppTheme.card,
+                    color: Theme.of(context).cardTheme.color ?? AppTheme.lightCard,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.border),
+                    border: Border.all(color: AppTheme.border(isDark)),
                   ),
                   child: Row(children: [
                     Icon(Icons.calendar_today_rounded,
@@ -431,7 +432,7 @@ class _DocImportScreenState extends State<DocImportScreen> {
                 ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF888899),
-                  side: const BorderSide(color: AppTheme.border),
+                  side: BorderSide(color: AppTheme.border(isDark)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),

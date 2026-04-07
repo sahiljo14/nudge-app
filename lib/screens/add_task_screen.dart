@@ -306,7 +306,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.surface,
+      backgroundColor: AppTheme.lightSurface,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
@@ -347,10 +347,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               // Input box
               Container(
                 decoration: BoxDecoration(
-                  color: AppTheme.card,
+                  color: AppTheme.lightCard,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _showReview ? AppTheme.primary : AppTheme.border,
+                    color: _showReview ? AppTheme.primary : AppTheme.lightBorder,
                     width: _showReview ? 2 : 1,
                   ),
                 ),
@@ -373,7 +373,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: AppTheme.border))),
+                        border: Border(top: BorderSide(color: AppTheme.lightBorder))),
                     child: Row(children: [
                       GestureDetector(
                         onTap: () async {
@@ -420,9 +420,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     onTap: () { _ctrl.text = ex; _parse(); },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: AppTheme.card,
+                      decoration: BoxDecoration(color: AppTheme.lightCard,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppTheme.border)),
+                          border: Border.all(color: AppTheme.lightBorder)),
                       child: Text(ex, style: const TextStyle(
                           fontSize: 12, color: Color(0xFF6C63FF), fontWeight: FontWeight.w500)),
                     ),
@@ -576,9 +576,9 @@ class _ReviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final sc = AppTheme.subjectColor(subject.isNotEmpty ? subject : 'default');
     return Container(
-      decoration: BoxDecoration(color: AppTheme.card,
+      decoration: BoxDecoration(color: AppTheme.lightCard,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border)),
+          border: Border.all(color: AppTheme.lightBorder)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Header
         Container(
@@ -587,7 +587,7 @@ class _ReviewCard extends StatelessWidget {
               color: AppTheme.primary.withValues(alpha: 0.05),
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-              border: Border(bottom: BorderSide(color: AppTheme.border))),
+              border: Border(bottom: BorderSide(color: AppTheme.lightBorder))),
           child: Row(children: [
             const Icon(Icons.auto_awesome_rounded, size: 14, color: AppTheme.primary),
             const SizedBox(width: 6),
@@ -626,9 +626,9 @@ class _ReviewCard extends StatelessWidget {
                 onTap: () => _editType(context),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(color: AppTheme.surface,
+                  decoration: BoxDecoration(color: AppTheme.lightSurface,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.border)),
+                      border: Border.all(color: AppTheme.lightBorder)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(AppTheme.taskTypeIcon(taskType), size: 12, color: const Color(0xFF888899)),
                     const SizedBox(width: 4),
@@ -642,10 +642,10 @@ class _ReviewCard extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                      color: priority == 'urgent' ? const Color(0xFFFFF0EE) : AppTheme.surface,
+                      color: priority == 'urgent' ? const Color(0xFFFFF0EE) : AppTheme.lightSurface,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: priority == 'urgent' ? const Color(0xFFFFCCBB) : AppTheme.border)),
+                          color: priority == 'urgent' ? const Color(0xFFFFCCBB) : AppTheme.lightBorder)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(priority == 'urgent' ? Icons.bolt_rounded : Icons.flag_outlined,
                         size: 12,
@@ -663,9 +663,9 @@ class _ReviewCard extends StatelessWidget {
               onTap: onPickDeadline,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(color: AppTheme.surface,
+                decoration: BoxDecoration(color: AppTheme.lightSurface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border)),
+                    border: Border.all(color: AppTheme.lightBorder)),
                 child: Row(children: [
                   Icon(Icons.calendar_today_rounded, size: 16, color: AppTheme.urgencyColor(deadline)),
                   const SizedBox(width: 10),
@@ -761,9 +761,9 @@ class _RemindersSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     return Container(
-      decoration: BoxDecoration(color: AppTheme.card,
+      decoration: BoxDecoration(color: AppTheme.lightCard,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border)),
+          border: Border.all(color: AppTheme.lightBorder)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -771,7 +771,7 @@ class _RemindersSection extends StatelessWidget {
               color: AppTheme.primary.withValues(alpha: 0.05),
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-              border: Border(bottom: BorderSide(color: AppTheme.border))),
+              border: Border(bottom: BorderSide(color: AppTheme.lightBorder))),
           child: Row(children: [
             const Icon(Icons.notifications_rounded, size: 14, color: AppTheme.primary),
             const SizedBox(width: 6),
@@ -838,9 +838,9 @@ class _RemindersSection extends StatelessWidget {
                 onTap: onAddCustom,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(color: AppTheme.surface,
+                  decoration: BoxDecoration(color: AppTheme.lightSurface,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border)),
+                      border: Border.all(color: AppTheme.lightBorder)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.add_rounded, size: 12, color: Colors.grey.shade500),
                     const SizedBox(width: 4),
@@ -894,9 +894,9 @@ class _AttachmentSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.card,
+        color: AppTheme.lightCard,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: AppTheme.lightBorder),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Header
@@ -906,7 +906,7 @@ class _AttachmentSection extends StatelessWidget {
             color: AppTheme.primary.withValues(alpha: 0.05),
             borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-            border: Border(bottom: BorderSide(color: AppTheme.border)),
+            border: Border(bottom: BorderSide(color: AppTheme.lightBorder)),
           ),
           child: Row(children: [
             const Icon(Icons.attach_file_rounded, size: 14, color: AppTheme.primary),
@@ -975,9 +975,9 @@ class _AttachmentSection extends StatelessWidget {
                 width: double.infinity,
                 padding: EdgeInsets.symmetric(vertical: files.isEmpty ? 18 : 10),
                 decoration: BoxDecoration(
-                  color: AppTheme.surface,
+                  color: AppTheme.lightSurface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.border),
+                  border: Border.all(color: AppTheme.lightBorder),
                 ),
                 child: files.isEmpty
                     ? Column(children: [

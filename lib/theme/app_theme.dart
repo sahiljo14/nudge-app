@@ -3,48 +3,59 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // ── Brand ─────────────────────────────────────────────────────────────────
-  static const primary   = Color(0xFF6C63FF); // violet accent
-  static const surface   = Color(0xFFF7F7FB);
-  static const card      = Color(0xFFFFFFFF);
-  static const border    = Color(0xFFEAEAF0);
+  // ── Brand — teal accent matching reference UI ─────────────────
+  static const primary     = Color(0xFF2DC9A8); // teal
+  static const primaryDark = Color(0xFF25A88E); // darker teal
+  static const accent      = Color(0xFF4CAF50); // green accent
 
-  // ── Urgency colour system ─────────────────────────────────────────────────
-  static const calm      = Color(0xFF3B6D11); // 5+ days
-  static const warning   = Color(0xFFBA7517); // 2-3 days
-  static const alert     = Color(0xFF993C1D); // tomorrow
-  static const danger    = Color(0xFFA32D2D); // overdue
+  // ── Light palette ─────────────────────────────────────────────
+  static const lightSurface  = Color(0xFFF4F6F9);
+  static const lightCard     = Color(0xFFFFFFFF);
+  static const lightBorder   = Color(0xFFEAECF2);
+  static const lightText     = Color(0xFF1A1D2E);
+  static const lightSubtext  = Color(0xFF8A8FA8);
+  static const lightNavBg    = Color(0xFFFFFFFF);
+
+  // ── Dark palette (reference screenshots) ─────────────────────
+  static const darkSurface   = Color(0xFF0F1117);
+  static const darkCard      = Color(0xFF1C1F2E);
+  static const darkBorder    = Color(0xFF2A2D3E);
+  static const darkText      = Color(0xFFEEEEF5);
+  static const darkSubtext   = Color(0xFF6B6F84);
+  static const darkNavBg     = Color(0xFF12151F);
+  static const darkHeaderBg  = Color(0xFF12151F);
+
+  // ── Urgency ────────────────────────────────────────────────────
+  static const calm    = Color(0xFF2DC9A8);
+  static const warning = Color(0xFFFFB627);
+  static const alert   = Color(0xFFFF7043);
+  static const danger  = Color(0xFFE53935);
 
   static Color urgencyColor(DateTime deadline) {
     final diff = deadline.difference(DateTime.now());
-    if (diff.isNegative)        return danger;
-    if (diff.inHours < 24)      return alert;
-    if (diff.inDays <= 2)       return warning;
+    if (diff.isNegative)   return danger;
+    if (diff.inHours < 24) return alert;
+    if (diff.inDays <= 2)  return warning;
     return calm;
   }
 
-  static Color urgencyBg(DateTime deadline) {
-    return urgencyColor(deadline).withValues(alpha: 0.08);
-  }
-
-  // ── Subject colour palette ────────────────────────────────────────────────
+  // ── Subject palette ───────────────────────────────────────────
   static const List<Color> _subjectPalette = [
-    Color(0xFFD85A30), // coral
-    Color(0xFF1D9E75), // teal
-    Color(0xFF378ADD), // blue
-    Color(0xFF7F77DD), // purple
-    Color(0xFFBA7517), // amber
-    Color(0xFFD4537E), // pink
-    Color(0xFF639922), // green
-    Color(0xFF888780), // gray
+    Color(0xFF2DC9A8), // teal
+    Color(0xFF5B8AF5), // blue
+    Color(0xFFFF7043), // orange
+    Color(0xFFAB47BC), // purple
+    Color(0xFFFFB627), // amber
+    Color(0xFFE91E8C), // pink
+    Color(0xFF26A69A), // teal-green
+    Color(0xFF78909C), // slate
   ];
 
   static Color subjectColor(String subject) {
-    if (subject.isEmpty) return const Color(0xFF888780);
+    if (subject.isEmpty) return const Color(0xFF78909C);
     return _subjectPalette[subject.hashCode.abs() % _subjectPalette.length];
   }
 
-  // ── Task type icons ────────────────────────────────────────────────────────
   static IconData taskTypeIcon(String type) {
     switch (type) {
       case 'exam':       return Icons.school_rounded;
@@ -56,75 +67,97 @@ class AppTheme {
     }
   }
 
-  // ── MaterialTheme ─────────────────────────────────────────────────────────
-  static ThemeData get light => ThemeData(
-    useMaterial3: true,
-    brightness: Brightness.light,
-    scaffoldBackgroundColor: surface,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: primary,
-      brightness: Brightness.light,
-      surface: surface,
-    ),
-    fontFamily: 'Roboto',
-    appBarTheme: const AppBarTheme(
-      backgroundColor: card,
-      foregroundColor: Color(0xFF1A1A2E),
-      elevation: 0,
-      scrolledUnderElevation: 1,
-      shadowColor: Color(0x12000000),
-      titleTextStyle: TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFF1A1A2E),
-        letterSpacing: -0.3,
+  // ── Helper — surface/card/text based on brightness ────────────
+  static Color surface(bool dark)  => dark ? darkSurface  : lightSurface;
+  static Color card(bool dark)     => dark ? darkCard      : lightCard;
+  static Color border(bool dark)   => dark ? darkBorder    : lightBorder;
+  static Color text(bool dark)     => dark ? darkText      : lightText;
+  static Color subtext(bool dark)  => dark ? darkSubtext   : lightSubtext;
+  static Color navBg(bool dark)    => dark ? darkNavBg     : lightNavBg;
+
+  // ── Light theme ───────────────────────────────────────────────
+  static ThemeData get light => _build(Brightness.light);
+  static ThemeData get dark  => _build(Brightness.dark);
+
+  static ThemeData _build(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    final bg     = isDark ? darkSurface : lightSurface;
+    final cardC  = isDark ? darkCard    : lightCard;
+    final textC  = isDark ? darkText    : lightText;
+    final borderC= isDark ? darkBorder  : lightBorder;
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      scaffoldBackgroundColor: bg,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primary,
+        brightness: brightness,
+        surface: bg,
       ),
-    ),
-    cardTheme: CardThemeData(
-      color: card,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: border, width: 1),
-      ),
-      margin: EdgeInsets.zero,
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: card,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: border),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: border),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: primary, width: 2),
-      ),
-      contentPadding:
-      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      hintStyle: const TextStyle(
-          color: Color(0xFFAAABB5), fontSize: 14),
-    ),
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: primary,
-        foregroundColor: Colors.white,
+      fontFamily: 'Roboto',
+      appBarTheme: AppBarTheme(
+        backgroundColor: isDark ? darkHeaderBg : lightCard,
+        foregroundColor: textC,
         elevation: 0,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14)),
-        textStyle: const TextStyle(
-            fontSize: 15, fontWeight: FontWeight.w700),
+        scrolledUnderElevation: 0,
+        titleTextStyle: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: textC,
+          letterSpacing: -0.3,
+        ),
       ),
-    ),
-    snackBarTheme: SnackBarThemeData(
-      behavior: SnackBarBehavior.floating,
-      shape:
-      RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ),
-  );
+      cardTheme: CardThemeData(
+        color: cardC,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: borderC, width: 1),
+        ),
+        margin: EdgeInsets.zero,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cardC,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: borderC),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: borderC),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: primary, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        hintStyle: TextStyle(color: isDark ? darkSubtext : lightSubtext, fontSize: 14),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+                (s) => s.contains(WidgetState.selected) ? primary : Colors.grey),
+        trackColor: WidgetStateProperty.resolveWith(
+                (s) => s.contains(WidgetState.selected)
+                ? primary.withValues(alpha: 0.4)
+                : Colors.grey.withValues(alpha: 0.3)),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: isDark ? darkCard : lightText,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
 }
