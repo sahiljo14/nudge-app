@@ -40,8 +40,8 @@ Nudge turns any unstructured input into a clean, organized task with a deadline 
 
 - [x] Phase 1 — Project setup and local SQLite storage
 - [x] Phase 2 — Manual task input with deadline picker
-- [ ] Phase 3 — Share intent and message input
-- [ ] Phase 4 — Smart Hinglish parser and date resolver
+- [x] Phase 3 — Share intent and message input
+- [x] Phase 4 — Smart Hinglish parser and date resolver
 - [ ] Phase 5 — OCR from screenshots
 - [ ] Phase 6 — Local push notifications
 - [ ] Phase 7 — Cloud sync (optional)
@@ -56,7 +56,7 @@ Nudge turns any unstructured input into a clean, organized task with a deadline 
 
 ### Run locally
 ```bash
-git clone https://github.com/yourusername/nudge-app.git
+git clone https://github.com/sahiljo14/nudge-app.git
 cd nudge-app
 flutter pub get
 flutter run
