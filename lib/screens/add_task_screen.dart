@@ -305,6 +305,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: AppTheme.lightSurface,
       appBar: AppBar(
@@ -360,7 +361,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     focusNode: _focus,
                     maxLines: 4, minLines: 3,
                     textCapitalization: TextCapitalization.sentences,
-                    style: const TextStyle(fontSize: 15, color: Color(0xFF1A1A2E), height: 1.5),
+                    style: TextStyle(fontSize: 15, color: AppTheme.text(isDark), height: 1.5),
                     decoration: const InputDecoration(
                       hintText:
                       'e.g. "OS assignment kal tak submit karna hai"\n'

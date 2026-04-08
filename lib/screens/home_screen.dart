@@ -1,9 +1,8 @@
 // lib/screens/home_screen.dart
-// REDESIGNED: teal theme, dark/light mode, bottom nav, collapsible doc folders,
-// search in tasks + docs, settings tab with theme toggle + save location
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import '../database/db_helper.dart';
@@ -12,8 +11,11 @@ import '../models/task.dart';
 import '../models/document.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/nudge_primitives.dart';
 import '../widgets/task_card.dart';
 import 'add_task_screen.dart';
+import 'profile_screen.dart';
+import '../services/user_prefs.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HOME SCREEN — bottom nav shell
@@ -72,11 +74,53 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _toggleDone(Task task) async {
     HapticFeedback.selectionClick();
-    final updated = task.copyWith(isDone: !task.isDone);
+    final markingDone = !task.isDone;
+    final updated = task.copyWith(
+      isDone: markingDone,
+      completedAt: markingDone ? DateTime.now() : null,
+    );
     await DBHelper.instance.updateTask(updated);
     if (updated.isDone) await NotificationService.instance.cancelReminders(task);
     else await NotificationService.instance.scheduleReminders(updated);
     await _load();
+    if (markingDone && mounted) _showCelebration(updated);
+  }
+
+  void _showCelebration(Task task) {
+    final totalDone = _allTasks.where((t) => t.isDone).length;
+    final xp = totalDone * 10;
+    // Compute current streak from freshly-loaded _allTasks
+    bool sameDay(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
+    DateTime? completionDay(Task t) {
+      if (!t.isDone) return null;
+      final dt = t.completedAt ?? t.deadline;
+      return DateTime(dt.year, dt.month, dt.day);
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    int streak = 0;
+    if (_allTasks.any((t) { final d = completionDay(t); return d != null && sameDay(d, today); })) streak++;
+    for (int i = 1; i < 365; i++) {
+      final day = today.subtract(Duration(days: i));
+      if (_allTasks.any((t) { final d = completionDay(t); return d != null && sameDay(d, day); })) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
+      builder: (_) => _CelebrationSheet(
+        taskName: task.name,
+        xp: xp,
+        streak: streak,
+        isDark: isDark,
+      ),
+    );
   }
 
   Future<void> _deleteTask(Task task) async {
@@ -93,7 +137,8 @@ class _HomeScreenState extends State<HomeScreen> {
       await showDialog<bool>(
         context: ctx,
         builder: (_) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
           title: const Text('Delete task?',
               style: TextStyle(fontWeight: FontWeight.w700)),
           content: Text('"$name"'),
@@ -107,8 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(color: Color(0xFFE53935)))),
           ],
         ),
-      ) ??
-          false;
+      ) ?? false;
 
   void _openTaskDetail(Task task) {
     Navigator.of(context)
@@ -138,9 +182,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final pages = [
       _TodayTab(
-          tasks: _todayTasks, onToggle: _toggleDone,
-          onDelete: _deleteTask, onTap: _openTaskDetail,
-          onAdd: _addTask, isDark: isDark),
+          tasks: _todayTasks, allTasks: _allTasks,
+          onToggle: _toggleDone, onDelete: _deleteTask,
+          onTap: _openTaskDetail, onAdd: _addTask,
+          isDark: isDark),
       _AllTab(
           tasks: _allTasks, onToggle: _toggleDone,
           onDelete: _deleteTask, onTap: _openTaskDetail,
@@ -156,44 +201,39 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _loading
           ? Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : pages[_navIndex],
-      floatingActionButton: _navIndex < 2
-          ? FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: _addTask,
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
-        elevation: 4,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add task',
-            style: TextStyle(fontWeight: FontWeight.w700)),
-      )
-          : null,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: AppTheme.navBg(isDark),
-          border: Border(
-              top: BorderSide(
-                  color: AppTheme.border(isDark), width: 0.5)),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _NavItem(icon: Icons.home_rounded, label: 'Home',
-                    active: _navIndex == 0,
-                    onTap: () => setState(() => _navIndex = 0)),
-                _NavItem(icon: Icons.explore_rounded, label: 'Tasks',
-                    active: _navIndex == 1,
-                    onTap: () => setState(() => _navIndex = 1)),
-                _NavItem(icon: Icons.folder_rounded, label: 'Docs',
-                    active: _navIndex == 2,
-                    onTap: () => setState(() => _navIndex = 2)),
-                _NavItem(icon: Icons.settings_rounded, label: 'Settings',
-                    active: _navIndex == 3,
-                    onTap: () => setState(() => _navIndex = 3)),
-              ],
-            ),
+        elevation: 6,
+        child: const Icon(Icons.add_rounded, size: 28),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: BottomAppBar(
+        color: AppTheme.navBg(isDark),
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        padding: EdgeInsets.zero,
+        child: SizedBox(
+          height: 60,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _NavItem(icon: Icons.home_rounded, label: 'Home',
+                  active: _navIndex == 0,
+                  onTap: () => setState(() => _navIndex = 0)),
+              _NavItem(icon: Icons.task_alt_rounded, label: 'Tasks',
+                  active: _navIndex == 1,
+                  onTap: () => setState(() => _navIndex = 1)),
+              const SizedBox(width: 72), // gap for center FAB
+              _NavItem(icon: Icons.folder_rounded, label: 'Docs',
+                  active: _navIndex == 2,
+                  onTap: () => setState(() => _navIndex = 2)),
+              _NavItem(icon: Icons.settings_rounded, label: 'Settings',
+                  active: _navIndex == 3,
+                  onTap: () => setState(() => _navIndex = 3)),
+            ],
           ),
         ),
       ),
@@ -217,109 +257,487 @@ class _NavItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 26,
-            color: active ? AppTheme.primary : AppTheme.subtext(isDark)),
-        const SizedBox(height: 3),
-        Text(label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-              color: active ? AppTheme.primary : AppTheme.subtext(isDark),
-            )),
-      ]),
+      child: SizedBox(
+        width: 72,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+            decoration: BoxDecoration(
+              color: active
+                  ? AppTheme.primary.withValues(alpha: 0.12)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 22,
+                color: active ? AppTheme.primary : AppTheme.subtext(isDark)),
+          ),
+          const SizedBox(height: 2),
+          Text(label, style: GoogleFonts.manrope(
+            fontSize: 10,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            color: active ? AppTheme.primary : AppTheme.subtext(isDark),
+          )),
+        ]),
+      ),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TODAY TAB
+// TODAY / HOME TAB — dashboard
 // ══════════════════════════════════════════════════════════════════════════════
 
-class _TodayTab extends StatelessWidget {
-  final List<Task> tasks;
+class _TodayTab extends StatefulWidget {
+  final List<Task> tasks;    // today's pending tasks
+  final List<Task> allTasks; // all tasks — for heatmap and energy ring
   final Function(Task) onToggle, onDelete, onTap;
   final VoidCallback onAdd;
   final bool isDark;
-  const _TodayTab(
-      {required this.tasks, required this.onToggle, required this.onDelete,
-        required this.onTap, required this.onAdd, required this.isDark});
+  const _TodayTab({
+    required this.tasks, required this.allTasks,
+    required this.onToggle, required this.onDelete,
+    required this.onTap, required this.onAdd, required this.isDark});
+  @override
+  State<_TodayTab> createState() => _TodayTabState();
+}
+
+class _TodayTabState extends State<_TodayTab> {
+  bool _nudgeDismissed = false;
+
+  // ── Helpers shared by heatmap and streak cards ─────────────────────────────
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Real completion day for a done task; fallback to deadline for pre-migration rows.
+  DateTime? _completionDay(Task t) {
+    if (!t.isDone) return null;
+    final dt = t.completedAt ?? t.deadline;
+    return DateTime(dt.year, dt.month, dt.day);
+  }
+
+  // 28-day activity heatmap — counts done tasks by completion date
+  Map<DateTime, int> get _heatmap {
+    final now = DateTime.now();
+    final map = <DateTime, int>{};
+    for (int i = 27; i >= 0; i--) {
+      final day = DateTime(now.year, now.month, now.day)
+          .subtract(Duration(days: i));
+      map[day] = 0;
+    }
+    for (final task in widget.allTasks) {
+      if (!task.isDone) continue; // only count completed tasks
+      final dt = task.completedAt ?? task.deadline;
+      final day = DateTime(dt.year, dt.month, dt.day);
+      if (map.containsKey(day)) {
+        map[day] = (map[day]! + 1).clamp(0, 5);
+      }
+    }
+    return map;
+  }
+
+  // Count of tasks completed today (for energy ring)
+  int get _todayDoneCount {
+    final today = DateTime(
+        DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    return widget.allTasks
+        .where((t) {
+          final d = _completionDay(t);
+          return d != null && _sameDay(d, today);
+        })
+        .length;
+  }
+
+  int get _currentStreak {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    int streak = 0;
+    if (widget.allTasks
+        .any((t) { final d = _completionDay(t); return d != null && _sameDay(d, today); })) {
+      streak++;
+    }
+    for (int i = 1; i < 365; i++) {
+      final day = today.subtract(Duration(days: i));
+      if (widget.allTasks
+          .any((t) { final d = _completionDay(t); return d != null && _sameDay(d, day); })) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  int get _bestStreak {
+    final doneDays = <DateTime>{};
+    for (final t in widget.allTasks) {
+      final d = _completionDay(t);
+      if (d != null) doneDays.add(d);
+    }
+    if (doneDays.isEmpty) return 0;
+    final sorted = doneDays.toList()..sort();
+    int best = 1, current = 1;
+    for (int i = 1; i < sorted.length; i++) {
+      if (sorted[i].difference(sorted[i - 1]).inDays == 1) {
+        current++;
+        if (current > best) best = current;
+      } else {
+        current = 1;
+      }
+    }
+    return best;
+  }
+
+  String get _nudgeMessage {
+    final now     = DateTime.now();
+    final overdue = widget.tasks
+        .where((t) => t.deadline.isBefore(now)).length;
+    final urgent  = widget.tasks
+        .where((t) =>
+            !t.deadline.isBefore(now) &&
+            t.deadline.difference(now).inHours < 24).length;
+    if (overdue > 0) {
+      return 'You have $overdue overdue task${overdue > 1 ? "s" : ""}. '
+          'Tackle ${overdue > 1 ? "them" : "it"} first to protect your streak.';
+    }
+    if (urgent > 0) {
+      return '$urgent task${urgent > 1 ? "s" : ""} due in the next 24 hours. '
+          'Stay focused!';
+    }
+    if (widget.tasks.isEmpty) {
+      return 'All clear today! A great time to get ahead on upcoming work.';
+    }
+    return '${widget.tasks.length} task${widget.tasks.length > 1 ? "s" : ""} '
+        'left today. Keep the momentum going!';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isDark   = widget.isDark;
     final now      = DateTime.now();
     final h        = now.hour;
     final greet    = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-    final overdue  = tasks.where((t) => t.deadline.isBefore(now)).toList();
-    final upcoming = tasks.where((t) => !t.deadline.isBefore(now)).toList();
-    final headerBg = isDark ? AppTheme.darkHeaderBg : AppTheme.primary;
+    final overdue  = widget.tasks.where((t) => t.deadline.isBefore(now)).toList();
+    final upcoming = widget.tasks.where((t) => !t.deadline.isBefore(now)).toList();
+    final totalToday = widget.tasks.length + _todayDoneCount;
+    final tasksRingValue =
+        totalToday > 0 ? _todayDoneCount / totalToday : 0.0;
+    final topPad  = MediaQuery.of(context).padding.top;
+    final heatmap = _heatmap;
 
     return CustomScrollView(slivers: [
+
+      // ── Dashboard header ─────────────────────────────────────────
       SliverToBoxAdapter(
-        child: Container(
-          color: headerBg,
-          padding: EdgeInsets.only(
-            left: 20, right: 20,
-            top: MediaQuery.of(context).padding.top + 20,
-            bottom: 28,
-          ),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(greet,
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.white.withValues(alpha: 0.70),
-                        fontWeight: FontWeight.w500)),
-                const SizedBox(height: 4),
-                const Text("Today's Tasks",
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
-                        color: Colors.white, letterSpacing: -0.5)),
-                const SizedBox(height: 4),
-                Text('${tasks.length} task${tasks.length == 1 ? "" : "s"} for today',
-                    style: TextStyle(
-                        fontSize: 13, color: Colors.white.withValues(alpha: 0.60))),
-              ]),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, topPad + 24, 16, 0),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+
+            // Greeting
+            Text(
+              DateFormat('EEEE · d MMM').format(now).toUpperCase(),
+              style: GoogleFonts.manrope(
+                fontSize: 11, fontWeight: FontWeight.w700,
+                letterSpacing: 0.8, color: AppTheme.subtext(isDark)),
             ),
-            Container(
-              width: 42, height: 42,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 4),
+            RichText(
+              text: TextSpan(
+                style: GoogleFonts.manrope(
+                  fontSize: 32, fontWeight: FontWeight.w800,
+                  color: AppTheme.text(isDark),
+                  letterSpacing: -0.8, height: 1.1,
+                ),
+                children: [
+                  TextSpan(text: '$greet,\n'),
+                  TextSpan(
+                    text: widget.tasks.isEmpty
+                        ? 'all clear! 🎉'
+                        : 'let\'s go.',
+                    style: const TextStyle(
+                      color: AppTheme.primary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
               ),
-              child: Stack(alignment: Alignment.center, children: [
-                const Icon(Icons.notifications_none_rounded,
-                    color: Colors.white, size: 22),
-                if (tasks.isNotEmpty)
-                  Positioned(top: 8, right: 8,
-                      child: Container(width: 8, height: 8,
-                          decoration: const BoxDecoration(
-                              color: Color(0xFFFFB627), shape: BoxShape.circle))),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              widget.tasks.isEmpty
+                  ? 'No tasks due today.'
+                  : '${widget.tasks.length} task${widget.tasks.length == 1 ? "" : "s"}'
+                    ' for today'
+                    '${_todayDoneCount > 0 ? ", $_todayDoneCount done ✓" : "."}',
+              style: GoogleFonts.manrope(
+                fontSize: 14, fontWeight: FontWeight.w500,
+                color: AppTheme.subtext(isDark)),
+            ),
+            const SizedBox(height: 20),
+
+            // ── Momentum / heatmap card ───────────────────────────
+            NudgeCard(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Row(children: [
+                  Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    NudgeLabel('Momentum'),
+                    const SizedBox(height: 2),
+                    Text('This week\'s heat',
+                        style: GoogleFonts.manrope(
+                          fontSize: 15, fontWeight: FontWeight.w800,
+                          color: AppTheme.text(isDark))),
+                  ])),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceLow(isDark),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text('28 days',
+                        style: GoogleFonts.manrope(
+                          fontSize: 11, fontWeight: FontWeight.w700,
+                          color: AppTheme.primary)),
+                  ),
+                ]),
+                const SizedBox(height: 14),
+                GridView.count(
+                  crossAxisCount: 7,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 5,
+                  crossAxisSpacing: 5,
+                  children: heatmap.entries.map((e) {
+                    final heat = e.value;
+                    final isToday = e.key.year == now.year &&
+                        e.key.month == now.month &&
+                        e.key.day == now.day;
+                    final Color cellColor = isToday
+                        ? AppTheme.primary
+                        : heat == 0
+                            ? AppTheme.surfaceLow(isDark)
+                            : AppTheme.primary.withValues(
+                                alpha: (0.2 + heat * 0.16).clamp(0.2, 1.0));
+                    return Tooltip(
+                      message:
+                          '${e.key.day}/${e.key.month}: $heat task${heat == 1 ? "" : "s"}',
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          color: cellColor,
+                          borderRadius: BorderRadius.circular(6),
+                          border: isToday
+                              ? Border.all(
+                                  color: AppTheme.primary, width: 1.5)
+                              : null,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Text('Less', style: GoogleFonts.manrope(
+                      fontSize: 10, color: AppTheme.subtext(isDark))),
+                  const Spacer(),
+                  ...List.generate(5, (i) => Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Container(
+                      width: 14, height: 14,
+                      decoration: BoxDecoration(
+                        color: i == 0
+                            ? AppTheme.surfaceLow(isDark)
+                            : AppTheme.primary
+                                .withValues(alpha: 0.2 + i * 0.2),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  )),
+                  const Spacer(),
+                  Text('More', style: GoogleFonts.manrope(
+                      fontSize: 10, color: AppTheme.subtext(isDark))),
+                ]),
               ]),
             ),
+            const SizedBox(height: 12),
+
+            // ── Energy rings card ─────────────────────────────────
+            NudgeCard(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      NudgeLabel('Energy Rings'),
+                      const SizedBox(height: 2),
+                      Text("Today's progress",
+                          style: GoogleFonts.manrope(
+                            fontSize: 15, fontWeight: FontWeight.w800,
+                            color: AppTheme.text(isDark))),
+                    ]),
+                    const Text('⚡', style: TextStyle(fontSize: 22)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _RingItem(
+                      label: 'Tasks',
+                      value: tasksRingValue,
+                      percent: totalToday > 0
+                          ? '${(_todayDoneCount / totalToday * 100).round()}%'
+                          : '—',
+                      gradient: [AppTheme.primary, AppTheme.primaryContainer],
+                      isDark: isDark,
+                    ),
+                    _RingItem(
+                      label: 'Focus',
+                      value: 0,
+                      percent: '—',
+                      gradient: [
+                        AppTheme.secondary,
+                        AppTheme.secondaryContainer
+                      ],
+                      isDark: isDark,
+                    ),
+                    _RingItem(
+                      label: 'Habits',
+                      value: 0,
+                      percent: '—',
+                      gradient: [
+                        AppTheme.tertiary,
+                        const Color(0xFFFFE4A0)
+                      ],
+                      isDark: isDark,
+                    ),
+                  ],
+                ),
+              ]),
+            ),
+            const SizedBox(height: 12),
+
+            // ── Smart Nudge card ──────────────────────────────────
+            if (!_nudgeDismissed) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: AppTheme.primary.withValues(alpha: 0.12)),
+                ),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Container(
+                    width: 38, height: 38,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppTheme.primary, AppTheme.primaryContainer],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.auto_awesome_rounded,
+                        color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text('SMART NUDGE',
+                          style: GoogleFonts.manrope(
+                            fontSize: 10, fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                            color: AppTheme.primary)),
+                      const SizedBox(height: 3),
+                      Text(_nudgeMessage,
+                          style: GoogleFonts.manrope(
+                            fontSize: 13, fontWeight: FontWeight.w600,
+                            color: AppTheme.text(isDark), height: 1.4)),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 44, height: 44,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _nudgeDismissed = true),
+                      behavior: HitTestBehavior.opaque,
+                      child: Center(
+                        child: Container(
+                          width: 28, height: 28,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.close_rounded,
+                              color: AppTheme.primary, size: 14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // Today's tasks section label
+            if (widget.tasks.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text("Today's Tasks",
+                    style: GoogleFonts.manrope(
+                      fontSize: 16, fontWeight: FontWeight.w800,
+                      color: AppTheme.text(isDark))),
+              ),
           ]),
         ),
       ),
-      if (tasks.isEmpty)
-        SliverFillRemaining(child: _EmptyState(
-          icon: Icons.check_circle_outline_rounded,
-          title: 'All clear today!',
-          subtitle: 'No tasks due. Enjoy your day.',
-          actionLabel: 'Add a task',
-          onAction: onAdd, isDark: isDark,
-        ))
+
+      // ── Task list ─────────────────────────────────────────────────
+      if (widget.tasks.isEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: _EmptyState(
+              icon: Icons.check_circle_outline_rounded,
+              title: 'All clear today!',
+              subtitle: 'No tasks due. Tap + to add one.',
+              actionLabel: 'Add a task',
+              onAction: widget.onAdd,
+              isDark: isDark,
+            ),
+          ),
+        )
       else ...[
         if (overdue.isNotEmpty) ...[
           SliverToBoxAdapter(child: _SectionHeader(
-              title: 'OVERDUE', color: AppTheme.danger, isDark: isDark)),
+              title: 'OVERDUE',
+              color: AppTheme.danger, isDark: isDark)),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(delegate: SliverChildBuilderDelegate(
                   (_, i) => GestureDetector(
-                onTap: () => onTap(overdue[i]),
-                child: TaskCard(task: overdue[i],
-                    onToggleDone: () => onToggle(overdue[i]),
-                    onDelete: () => onDelete(overdue[i])),
+                onTap: () => widget.onTap(overdue[i]),
+                child: TaskCard(
+                    task: overdue[i],
+                    onToggleDone: () => widget.onToggle(overdue[i]),
+                    onDelete: () => widget.onDelete(overdue[i])),
               ),
               childCount: overdue.length,
             )),
@@ -327,42 +745,193 @@ class _TodayTab extends StatelessWidget {
         ],
         if (upcoming.isNotEmpty) ...[
           SliverToBoxAdapter(child: _SectionHeader(
-              title: 'COMING UP', color: AppTheme.subtext(isDark), isDark: isDark)),
+              title: 'COMING UP',
+              color: AppTheme.subtext(isDark), isDark: isDark)),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(delegate: SliverChildBuilderDelegate(
                   (_, i) => GestureDetector(
-                onTap: () => onTap(upcoming[i]),
-                child: TaskCard(task: upcoming[i],
-                    onToggleDone: () => onToggle(upcoming[i]),
-                    onDelete: () => onDelete(upcoming[i])),
+                onTap: () => widget.onTap(upcoming[i]),
+                child: TaskCard(
+                    task: upcoming[i],
+                    onToggleDone: () => widget.onToggle(upcoming[i]),
+                    onDelete: () => widget.onDelete(upcoming[i])),
               ),
               childCount: upcoming.length,
             )),
           ),
         ],
-        const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
+
+      // ── Streak summary card ──────────────────────────────────────
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: _StreakSummaryCard(
+            isDark: isDark,
+            streak: _currentStreak,
+            xp: widget.allTasks.where((t) => t.isDone).length * 10,
+            best: _bestStreak,
+          ),
+        ),
+      ),
+      const SliverToBoxAdapter(child: SizedBox(height: 100)),
     ]);
   }
 }
 
+// ── Ring widget ────────────────────────────────────────────────────────────────
+
+class _RingItem extends StatelessWidget {
+  final String label, percent;
+  final double value;
+  final List<Color> gradient;
+  final bool isDark;
+  const _RingItem({
+    required this.label, required this.value, required this.percent,
+    required this.gradient, required this.isDark});
+  @override
+  Widget build(BuildContext context) => Column(children: [
+    NudgeRingProgress(
+      value: value,
+      size: 80,
+      strokeWidth: 10,
+      gradient: gradient,
+      center: Text(percent,
+          style: GoogleFonts.manrope(
+            fontSize: 15, fontWeight: FontWeight.w800,
+            color: gradient.first)),
+    ),
+    const SizedBox(height: 6),
+    Text(label, style: GoogleFonts.manrope(
+        fontSize: 11, fontWeight: FontWeight.w600,
+        color: AppTheme.subtext(isDark))),
+  ]);
+}
+
+// ── Streak summary card ────────────────────────────────────────────────────────
+
+class _StreakSummaryCard extends StatelessWidget {
+  final bool isDark;
+  final int streak, xp, best;
+  const _StreakSummaryCard({
+    required this.isDark,
+    required this.streak,
+    required this.xp,
+    required this.best,
+  });
+
+  double get _milestoneProgress {
+    if (streak == 0) return 0;
+    final mod = streak % 7;
+    return mod == 0 ? 1.0 : mod / 7.0;
+  }
+
+  String get _milestoneLabel {
+    if (streak == 0) return 'Complete a task to start your streak';
+    final next = (streak ~/ 7 + 1) * 7;
+    final remaining = next - streak;
+    const names = {7: 'Week Warrior', 14: 'Fortnight Focus', 21: 'Legendary', 28: 'Champion'};
+    final badge = names[next] ?? 'Milestone';
+    return '$remaining day${remaining == 1 ? "" : "s"} to $badge badge';
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () => Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ProfileScreen())),
+    child: NudgeCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Streak Progress',
+                style: GoogleFonts.manrope(
+                  fontSize: 15, fontWeight: FontWeight.w800,
+                  color: AppTheme.text(isDark))),
+            Row(children: [
+              Text('Tap to view',
+                  style: GoogleFonts.manrope(
+                      fontSize: 11, color: AppTheme.subtext(isDark))),
+              Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.subtext(isDark), size: 18),
+            ]),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(child: _StatMini(
+            value: streak.toString(), label: 'Day Streak',
+            bg: AppTheme.surfaceLow(isDark), fg: AppTheme.primary,
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: _StatMini(
+            value: xp.toString(), label: 'XP',
+            bg: isDark
+                ? const Color(0xFF1E1A0F)
+                : const Color(0xFFFFF8EC),
+            fg: AppTheme.tertiaryDark,
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: _StatMini(
+            value: best.toString(), label: 'Best',
+            bg: isDark
+                ? const Color(0xFF0D1F18)
+                : const Color(0xFFECFDF5),
+            fg: AppTheme.calm,
+          )),
+        ]),
+        const SizedBox(height: 10),
+        NudgeProgressBar(value: _milestoneProgress, height: 8),
+        const SizedBox(height: 8),
+        Text(_milestoneLabel,
+            style: GoogleFonts.manrope(
+              fontSize: 11, fontWeight: FontWeight.w700,
+              color: AppTheme.primary)),
+      ]),
+    ),
+  );
+}
+
+class _StatMini extends StatelessWidget {
+  final String value, label;
+  final Color bg, fg;
+  const _StatMini({required this.value, required this.label,
+      required this.bg, required this.fg});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+        color: bg, borderRadius: BorderRadius.circular(14)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(value, style: GoogleFonts.manrope(
+          fontSize: 20, fontWeight: FontWeight.w800, color: fg)),
+      Text(label.toUpperCase(),
+          style: GoogleFonts.manrope(
+            fontSize: 8, fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+            color: fg.withValues(alpha: 0.75))),
+    ]),
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
-// ALL TASKS TAB  — with search
+// ALL TASKS TAB  — search-first, stat cards, filter chips
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _AllTab extends StatefulWidget {
   final List<Task> tasks;
   final Function(Task) onToggle, onDelete, onTap;
   final bool isDark;
-  const _AllTab(
-      {required this.tasks, required this.onToggle, required this.onDelete,
-        required this.onTap, required this.isDark});
+  const _AllTab({required this.tasks, required this.onToggle,
+      required this.onDelete, required this.onTap, required this.isDark});
   @override
   State<_AllTab> createState() => _AllTabState();
 }
 
 class _AllTabState extends State<_AllTab> {
+  // 0=All, 1=Pending, 2=Urgent, 3=Done
   int _filter = 0;
   String _search = '';
   final _searchCtrl = TextEditingController();
@@ -374,13 +943,15 @@ class _AllTabState extends State<_AllTab> {
     List<Task> base;
     switch (_filter) {
       case 1: base = widget.tasks.where((t) => !t.isDone).toList(); break;
-      case 2: base = widget.tasks.where((t) =>  t.isDone).toList(); break;
+      case 2: base = widget.tasks
+          .where((t) => !t.isDone && t.priority == 'urgent').toList(); break;
+      case 3: base = widget.tasks.where((t) => t.isDone).toList(); break;
       default: base = widget.tasks;
     }
     if (_search.isEmpty) return base;
     final q = _search.toLowerCase();
     return base.where((t) =>
-    t.name.toLowerCase().contains(q) ||
+        t.name.toLowerCase().contains(q) ||
         t.subject.toLowerCase().contains(q) ||
         t.taskType.toLowerCase().contains(q)).toList();
   }
@@ -389,80 +960,114 @@ class _AllTabState extends State<_AllTab> {
   Widget build(BuildContext context) {
     final isDark  = widget.isDark;
     final pending = widget.tasks.where((t) => !t.isDone).length;
-    final urgent  = widget.tasks.where((t) => !t.isDone && t.priority == 'urgent').length;
-    final done    = widget.tasks.where((t) =>  t.isDone).length;
-    final headerBg = isDark ? AppTheme.darkHeaderBg : AppTheme.primary;
+    final urgent  = widget.tasks
+        .where((t) => !t.isDone && t.priority == 'urgent').length;
+    final done    = widget.tasks.where((t) => t.isDone).length;
+    final topPad  = MediaQuery.of(context).padding.top;
 
     return CustomScrollView(slivers: [
       SliverToBoxAdapter(
-        child: Container(
-          color: headerBg,
-          padding: EdgeInsets.only(
-            left: 20, right: 20,
-            top: MediaQuery.of(context).padding.top + 20,
-            bottom: 24,
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('My Tasks',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
-                    color: Colors.white, letterSpacing: -0.5)),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, topPad + 24, 16, 0),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+            NudgeSectionHeader(overline: 'Task manager', title: 'My Tasks'),
             const SizedBox(height: 16),
-            _SearchBar(
+            NudgeSearchBar(
               controller: _searchCtrl,
-              hint: 'Search tasks, subjects…',
+              hint: 'Search tasks, subjects, types…',
               onChanged: (v) => setState(() => _search = v),
-              onClear: () { _searchCtrl.clear(); setState(() => _search = ''); },
+              onClear: () {
+                _searchCtrl.clear();
+                setState(() => _search = '');
+              },
             ),
-          ]),
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Row(children: [
-            _StatChip(label: 'Pending', value: pending, color: AppTheme.primary, isDark: isDark),
-            const SizedBox(width: 8),
-            _StatChip(label: 'Urgent',  value: urgent,  color: AppTheme.alert,   isDark: isDark),
-            const SizedBox(width: 8),
-            _StatChip(label: 'Done',    value: done,    color: AppTheme.calm,    isDark: isDark),
-          ]),
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Row(children: [
-            _FilterChipWidget(label: 'All',     selected: _filter == 0, isDark: isDark,
-                onTap: () => setState(() => _filter = 0)),
-            const SizedBox(width: 8),
-            _FilterChipWidget(label: 'Pending', selected: _filter == 1, isDark: isDark,
-                onTap: () => setState(() => _filter = 1)),
-            const SizedBox(width: 8),
-            _FilterChipWidget(label: 'Done',    selected: _filter == 2, isDark: isDark,
-                onTap: () => setState(() => _filter = 2)),
+            const SizedBox(height: 20),
+            // Stat cards
+            Row(children: [
+              Expanded(child: NudgeStatCard(
+                icon: Icons.pending_actions_rounded,
+                value: pending.toString(),
+                label: 'Pending',
+                gradient: [AppTheme.primaryContainer, AppTheme.primary],
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: NudgeStatCard(
+                icon: Icons.bolt_rounded,
+                value: urgent.toString(),
+                label: 'Urgent',
+                gradient: [AppTheme.secondaryContainer, AppTheme.secondary],
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: NudgeStatCard(
+                icon: Icons.task_alt_rounded,
+                value: done.toString(),
+                label: 'Done',
+                gradient: [
+                  const Color(0xFFB8F7DE),
+                  const Color(0xFF34D399),
+                ],
+              )),
+            ]),
+            const SizedBox(height: 16),
+            // Filter chips
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                NudgeFilterChip(label: 'All',
+                    selected: _filter == 0,
+                    onTap: () => setState(() => _filter = 0)),
+                const SizedBox(width: 8),
+                NudgeFilterChip(label: 'Pending',
+                    selected: _filter == 1,
+                    onTap: () => setState(() => _filter = 1)),
+                const SizedBox(width: 8),
+                NudgeFilterChip(label: 'Urgent',
+                    selected: _filter == 2,
+                    onTap: () => setState(() => _filter = 2)),
+                const SizedBox(width: 8),
+                NudgeFilterChip(label: 'Done',
+                    selected: _filter == 3,
+                    onTap: () => setState(() => _filter = 3)),
+              ]),
+            ),
+            const SizedBox(height: 8),
           ]),
         ),
       ),
       if (_visible.isEmpty)
-        SliverFillRemaining(child: _EmptyState(
-          icon: Icons.task_alt_rounded,
-          title: _search.isNotEmpty ? 'No results' : 'No tasks here',
-          subtitle: _search.isNotEmpty ? 'Try a different search.' : 'Add your first task below.',
-          isDark: isDark,
-        ))
-      else
+        SliverFillRemaining(
+          child: _EmptyState(
+            icon: Icons.task_alt_rounded,
+            title: _search.isNotEmpty ? 'No results' : 'No tasks here',
+            subtitle: _search.isNotEmpty
+                ? 'Try a different search.'
+                : 'Add your first task below.',
+            isDark: isDark,
+          ),
+        )
+      else ...[
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           sliver: SliverList(delegate: SliverChildBuilderDelegate(
                 (_, i) => GestureDetector(
               onTap: () => widget.onTap(_visible[i]),
-              child: TaskCard(task: _visible[i],
+              child: TaskCard(
+                  task: _visible[i],
                   onToggleDone: () => widget.onToggle(_visible[i]),
                   onDelete: () => widget.onDelete(_visible[i])),
             ),
             childCount: _visible.length,
           )),
         ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: _NudgeInsightCard(tasks: widget.tasks, isDark: isDark),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 100)),
+      ],
     ]);
   }
 }
@@ -489,7 +1094,7 @@ class _DocsTabState extends State<_DocsTab> {
   @override
   void initState() {
     super.initState();
-    _expanded.addAll(widget.docsBySubject.keys); // open all by default
+    _expanded.addAll(widget.docsBySubject.keys);
   }
 
   @override
@@ -504,7 +1109,7 @@ class _DocsTabState extends State<_DocsTab> {
         result[e.key] = e.value;
       } else {
         final match = e.value.where((d) =>
-        d.note.toLowerCase().contains(q) ||
+            d.note.toLowerCase().contains(q) ||
             d.subject.toLowerCase().contains(q)).toList();
         if (match.isNotEmpty) result[e.key] = match;
       }
@@ -516,28 +1121,22 @@ class _DocsTabState extends State<_DocsTab> {
   Widget build(BuildContext context) {
     final isDark   = widget.isDark;
     final filtered = _filtered;
-    final headerBg = isDark ? AppTheme.darkHeaderBg : AppTheme.primary;
 
     return CustomScrollView(slivers: [
       SliverToBoxAdapter(
-        child: Container(
-          color: headerBg,
-          padding: EdgeInsets.only(
-            left: 20, right: 20,
-            top: MediaQuery.of(context).padding.top + 20,
-            bottom: 24,
-          ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, MediaQuery.of(context).padding.top + 24, 20, 0),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Documents',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
-                    color: Colors.white, letterSpacing: -0.5)),
+            NudgeSectionHeader(overline: 'Document hub', title: 'Subject Folders'),
             const SizedBox(height: 16),
-            _SearchBar(
+            NudgeSearchBar(
               controller: _searchCtrl,
               hint: 'Search folders, files…',
               onChanged: (v) => setState(() => _search = v),
               onClear: () { _searchCtrl.clear(); setState(() => _search = ''); },
             ),
+            const SizedBox(height: 8),
           ]),
         ),
       ),
@@ -570,7 +1169,6 @@ class _DocsTabState extends State<_DocsTab> {
                     border: Border.all(color: AppTheme.border(isDark)),
                   ),
                   child: Column(children: [
-                    // Folder header
                     InkWell(
                       onTap: () => setState(() {
                         if (isOpen) _expanded.remove(subject);
@@ -578,7 +1176,8 @@ class _DocsTabState extends State<_DocsTab> {
                       }),
                       borderRadius: BorderRadius.circular(16),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
                         child: Row(children: [
                           Container(
                             width: 40, height: 40,
@@ -586,16 +1185,20 @@ class _DocsTabState extends State<_DocsTab> {
                               color: color.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: Icon(Icons.folder_rounded, color: color, size: 22),
+                            child: Icon(Icons.folder_rounded,
+                                color: color, size: 22),
                           ),
                           const SizedBox(width: 12),
                           Expanded(child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(subject, style: TextStyle(fontSize: 14,
-                                  fontWeight: FontWeight.w700, color: AppTheme.text(isDark))),
-                              Text('${docs.length} file${docs.length == 1 ? "" : "s"}',
-                                  style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark))),
+                              Text(subject, style: TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w700,
+                                  color: AppTheme.text(isDark))),
+                              Text(
+                                  '${docs.length} file${docs.length == 1 ? "" : "s"}',
+                                  style: TextStyle(fontSize: 12,
+                                      color: AppTheme.subtext(isDark))),
                             ],
                           )),
                           AnimatedRotation(
@@ -607,7 +1210,6 @@ class _DocsTabState extends State<_DocsTab> {
                         ]),
                       ),
                     ),
-                    // Expandable file list
                     AnimatedCrossFade(
                       firstChild: const SizedBox.shrink(),
                       secondChild: Column(children: [
@@ -636,7 +1238,8 @@ class _DocsTabState extends State<_DocsTab> {
 class _DocCardTile extends StatelessWidget {
   final NudgeDocument doc;
   final bool isDark, isLast;
-  const _DocCardTile({required this.doc, required this.isDark, required this.isLast});
+  const _DocCardTile(
+      {required this.doc, required this.isDark, required this.isLast});
 
   IconData get _icon {
     if (doc.isPdf)   return Icons.picture_as_pdf_rounded;
@@ -659,13 +1262,14 @@ class _DocCardTile extends StatelessWidget {
       },
       borderRadius: isLast
           ? const BorderRadius.only(
-          bottomLeft: Radius.circular(16),
-          bottomRight: Radius.circular(16))
+              bottomLeft: Radius.circular(16),
+              bottomRight: Radius.circular(16))
           : BorderRadius.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(children: [
-          Container(width: 36, height: 36,
+          Container(
+            width: 36, height: 36,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
@@ -673,13 +1277,16 @@ class _DocCardTile extends StatelessWidget {
             child: Icon(_icon, color: color, size: 18),
           ),
           const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
             Text(doc.note.isNotEmpty ? doc.note : 'Document',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
                     color: AppTheme.text(isDark)),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
             Text(doc.isPdf ? 'PDF · tap to open' : 'Image · tap to open',
-                style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark))),
+                style: TextStyle(
+                    fontSize: 11, color: AppTheme.subtext(isDark))),
           ])),
           Icon(Icons.open_in_new_rounded,
               color: AppTheme.subtext(isDark), size: 16),
@@ -703,6 +1310,15 @@ class _SettingsTab extends StatefulWidget {
 
 class _SettingsTabState extends State<_SettingsTab> {
   String _saveLocation = 'Default (app folder)';
+  String _userName = '';
+
+  @override
+  void initState() {
+    super.initState();
+    UserPrefs.getUserName().then((n) {
+      if (mounted) setState(() => _userName = n);
+    });
+  }
 
   Future<void> _pickSaveLocation() async {
     final isDark = widget.isDark;
@@ -717,8 +1333,10 @@ class _SettingsTabState extends State<_SettingsTab> {
         ),
         padding: const EdgeInsets.all(20),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 40, height: 4,
-              decoration: BoxDecoration(color: AppTheme.border(isDark),
+          Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                  color: AppTheme.border(isDark),
                   borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 20),
           Text('File save location',
@@ -726,12 +1344,14 @@ class _SettingsTabState extends State<_SettingsTab> {
                   color: AppTheme.text(isDark))),
           const SizedBox(height: 8),
           ...options.map((o) => ListTile(
-            title: Text(o, style: TextStyle(color: AppTheme.text(isDark))),
+            title: Text(o,
+                style: TextStyle(color: AppTheme.text(isDark))),
             leading: Icon(
               o == _saveLocation
                   ? Icons.radio_button_checked_rounded
                   : Icons.radio_button_unchecked_rounded,
-              color: o == _saveLocation ? AppTheme.primary : AppTheme.subtext(isDark),
+              color: o == _saveLocation
+                  ? AppTheme.primary : AppTheme.subtext(isDark),
             ),
             onTap: () => Navigator.pop(ctx, o),
           )),
@@ -745,26 +1365,62 @@ class _SettingsTabState extends State<_SettingsTab> {
   @override
   Widget build(BuildContext context) {
     final isDark   = widget.isDark;
-    final headerBg = isDark ? AppTheme.darkHeaderBg : AppTheme.primary;
 
     return CustomScrollView(slivers: [
       SliverToBoxAdapter(
-        child: Container(
-          color: headerBg,
-          padding: EdgeInsets.only(
-            left: 20, right: 20,
-            top: MediaQuery.of(context).padding.top + 20,
-            bottom: 28,
-          ),
-          child: const Text('Settings',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
-                  color: Colors.white, letterSpacing: -0.5)),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, MediaQuery.of(context).padding.top + 24, 20, 0),
+          child: NudgeSectionHeader(
+              overline: 'Preferences', title: 'Settings'),
         ),
       ),
       SliverPadding(
         padding: const EdgeInsets.all(16),
         sliver: SliverList(delegate: SliverChildListDelegate([
-          const SizedBox(height: 8),
+          // Profile card
+          GestureDetector(
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ProfileScreen())),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppTheme.primary, AppTheme.primaryContainer],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(children: [
+                Container(
+                  width: 52, height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.person_rounded,
+                      color: Colors.white, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(_userName.isEmpty ? 'Student' : _userName,
+                      style: GoogleFonts.manrope(
+                        fontSize: 16, fontWeight: FontWeight.w800,
+                        color: Colors.white)),
+                  Text('View profile, streaks & XP',
+                      style: GoogleFonts.manrope(
+                        fontSize: 12, fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.8))),
+                ])),
+                Icon(Icons.chevron_right_rounded,
+                    color: Colors.white.withValues(alpha: 0.8), size: 22),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 16),
           _SettingsSection(isDark: isDark, children: [
             ValueListenableBuilder<ThemeMode>(
               valueListenable: themeNotifier,
@@ -775,9 +1431,9 @@ class _SettingsTabState extends State<_SettingsTab> {
                 isDark: isDark,
                 trailing: Switch(
                   value: mode == ThemeMode.dark,
-                  activeColor: AppTheme.primary,
                   onChanged: (v) {
-                    themeNotifier.value = v ? ThemeMode.dark : ThemeMode.light;
+                    themeNotifier.value =
+                        v ? ThemeMode.dark : ThemeMode.light;
                   },
                 ),
               ),
@@ -827,6 +1483,28 @@ class _SettingsTabState extends State<_SettingsTab> {
               ),
             ),
           ]),
+          const SizedBox(height: 16),
+          _SettingsSection(isDark: isDark, children: [
+            _SettingsRow(
+              icon: Icons.replay_rounded,
+              iconColor: AppTheme.subtext(isDark),
+              title: 'Reset onboarding',
+              subtitle: 'Show setup again on next launch',
+              isDark: isDark,
+              trailing: Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.subtext(isDark), size: 20),
+              onTap: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                await UserPrefs.resetOnboarding();
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Onboarding will show on next launch'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+          ]),
           const SizedBox(height: 100),
         ])),
       ),
@@ -867,7 +1545,8 @@ class _SettingsRow extends StatelessWidget {
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(children: [
-        Container(width: 36, height: 36,
+        Container(
+          width: 36, height: 36,
           decoration: BoxDecoration(
             color: iconColor.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10),
@@ -875,11 +1554,14 @@ class _SettingsRow extends StatelessWidget {
           child: Icon(icon, color: iconColor, size: 18),
         ),
         const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
-              color: AppTheme.text(isDark))),
+        Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+          Text(title, style: TextStyle(fontSize: 14,
+              fontWeight: FontWeight.w600, color: AppTheme.text(isDark))),
           if (subtitle != null)
-            Text(subtitle!, style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark))),
+            Text(subtitle!, style: TextStyle(
+                fontSize: 12, color: AppTheme.subtext(isDark))),
         ])),
         if (trailing != null) trailing!,
       ]),
@@ -895,7 +1577,8 @@ class TaskDetailScreen extends StatefulWidget {
   final Task task;
   final VoidCallback onToggle, onDelete;
   const TaskDetailScreen(
-      {super.key, required this.task, required this.onToggle, required this.onDelete});
+      {super.key, required this.task,
+        required this.onToggle, required this.onDelete});
   @override
   State<TaskDetailScreen> createState() => _TaskDetailScreenState();
 }
@@ -976,14 +1659,18 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   border: Border.all(color: AppTheme.border(isDark)),
                 ),
                 padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                   Row(children: [
                     if (task.priority == 'urgent' && !task.isDone)
-                      _Badge(label: 'URGENT',
+                      _Badge(
+                          label: 'URGENT',
                           bg: AppTheme.alert.withValues(alpha: 0.12),
                           fg: AppTheme.alert),
                     if (task.isDone)
-                      _Badge(label: 'DONE',
+                      _Badge(
+                          label: 'DONE',
                           bg: AppTheme.calm.withValues(alpha: 0.12),
                           fg: AppTheme.calm),
                     const Spacer(),
@@ -991,42 +1678,61 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         size: 18, color: subjectColor),
                   ]),
                   const SizedBox(height: 12),
-                  Text(task.name, style: TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.4,
-                    color: task.isDone ? AppTheme.subtext(isDark) : AppTheme.text(isDark),
-                    decoration: task.isDone ? TextDecoration.lineThrough : null,
-                  )),
+                  Text(task.name,
+                      style: TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                        color: task.isDone
+                            ? AppTheme.subtext(isDark) : AppTheme.text(isDark),
+                        decoration:
+                            task.isDone ? TextDecoration.lineThrough : null,
+                      )),
                   const SizedBox(height: 16),
                   if (task.subject.isNotEmpty) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                         color: subjectColor.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(task.subject, style: TextStyle(fontSize: 13,
-                          fontWeight: FontWeight.w600, color: subjectColor)),
+                      child: Text(task.subject,
+                          style: TextStyle(fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: subjectColor)),
                     ),
                     const SizedBox(height: 14),
                   ],
-                  _DetailRow(icon: Icons.calendar_today_rounded, iconColor: urgColor,
+                  _DetailRow(
+                      icon: Icons.calendar_today_rounded,
+                      iconColor: urgColor,
                       label: 'Deadline',
-                      value: DateFormat('EEEE, d MMMM yyyy · h:mm a').format(task.deadline),
+                      value: DateFormat('EEEE, d MMMM yyyy · h:mm a')
+                          .format(task.deadline),
                       valueColor: AppTheme.text(isDark)),
                   const SizedBox(height: 10),
-                  _DetailRow(icon: Icons.timer_outlined, iconColor: urgColor,
-                      label: 'Status', value: _timeLabel, valueColor: urgColor),
+                  _DetailRow(
+                      icon: Icons.timer_outlined,
+                      iconColor: urgColor,
+                      label: 'Status',
+                      value: _timeLabel,
+                      valueColor: urgColor),
                   const SizedBox(height: 10),
-                  _DetailRow(icon: AppTheme.taskTypeIcon(task.taskType),
+                  _DetailRow(
+                      icon: AppTheme.taskTypeIcon(task.taskType),
                       iconColor: AppTheme.subtext(isDark),
                       label: 'Type',
-                      value: task.taskType[0].toUpperCase() + task.taskType.substring(1),
+                      value: task.taskType[0].toUpperCase() +
+                          task.taskType.substring(1),
                       valueColor: AppTheme.text(isDark)),
                 ]),
               ),
-              Positioned(left: 0, top: 0, bottom: 0,
-                child: Container(width: 4,
-                  decoration: BoxDecoration(color: subjectColor,
+              Positioned(
+                left: 0, top: 0, bottom: 0,
+                child: Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: subjectColor,
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(16),
                       bottomLeft: Radius.circular(16),
@@ -1044,7 +1750,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               padding: const EdgeInsets.only(bottom: 8, left: 2),
               child: Text(
                   'Attached document${_docs.length == 1 ? "" : "s"} (${_docs.length})',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700,
                       color: AppTheme.subtext(isDark), letterSpacing: 0.3)),
             ),
             ..._docs.map((doc) => Padding(
@@ -1058,11 +1765,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             child: ElevatedButton.icon(
               onPressed: widget.onToggle,
               icon: Icon(task.isDone
-                  ? Icons.replay_rounded : Icons.check_circle_outline_rounded),
+                  ? Icons.replay_rounded
+                  : Icons.check_circle_outline_rounded),
               label: Text(task.isDone ? 'Mark as pending' : 'Mark as done'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: task.isDone
-                    ? AppTheme.subtext(isDark) : AppTheme.calm,
+                backgroundColor:
+                    task.isDone ? AppTheme.subtext(isDark) : AppTheme.calm,
               ),
             ),
           ),
@@ -1073,43 +1781,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 }
 
-// ── Shared small widgets ───────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// SHARED SMALL WIDGETS
+// ══════════════════════════════════════════════════════════════════════════════
 
-class _SearchBar extends StatelessWidget {
-  final TextEditingController controller;
-  final String hint;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onClear;
-  const _SearchBar({required this.controller, required this.hint,
-    required this.onChanged, required this.onClear});
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 46,
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.15),
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: TextField(
-      controller: controller,
-      onChanged: onChanged,
-      style: const TextStyle(color: Colors.white, fontSize: 14),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14),
-        prefixIcon: Icon(Icons.search_rounded,
-            color: Colors.white.withValues(alpha: 0.7), size: 20),
-        suffixIcon: controller.text.isNotEmpty
-            ? IconButton(
-            icon: Icon(Icons.close_rounded,
-                color: Colors.white.withValues(alpha: 0.7), size: 18),
-            onPressed: onClear)
-            : null,
-        border: InputBorder.none,
-        contentPadding: const EdgeInsets.symmetric(vertical: 13),
-      ),
-    ),
-  );
-}
 
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -1120,58 +1795,9 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-    child: Text(title, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-        color: color, letterSpacing: 1.0)),
-  );
-}
-
-class _StatChip extends StatelessWidget {
-  final String label;
-  final int value;
-  final Color color;
-  final bool isDark;
-  const _StatChip({required this.label, required this.value,
-    required this.color, required this.isDark});
-  @override
-  Widget build(BuildContext context) => Expanded(
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(value.toString(), style: TextStyle(fontSize: 22,
-            fontWeight: FontWeight.w900, color: color)),
-        Text(label, style: TextStyle(fontSize: 11,
-            color: color.withValues(alpha: 0.75), fontWeight: FontWeight.w500)),
-      ]),
-    ),
-  );
-}
-
-class _FilterChipWidget extends StatelessWidget {
-  final String label;
-  final bool selected, isDark;
-  final VoidCallback onTap;
-  const _FilterChipWidget({required this.label, required this.selected,
-    required this.onTap, required this.isDark});
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      decoration: BoxDecoration(
-        color: selected ? AppTheme.primary : AppTheme.card(isDark),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: selected ? AppTheme.primary : AppTheme.border(isDark)),
-      ),
-      child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-          color: selected ? Colors.white : AppTheme.subtext(isDark))),
-    ),
+    child: Text(title,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+            color: color, letterSpacing: 1.0)),
   );
 }
 
@@ -1182,9 +1808,11 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-    child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800,
-        color: fg, letterSpacing: 0.8)),
+    decoration: BoxDecoration(
+        color: bg, borderRadius: BorderRadius.circular(6)),
+    child: Text(label,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800,
+            color: fg, letterSpacing: 0.8)),
   );
 }
 
@@ -1193,19 +1821,22 @@ class _DetailRow extends StatelessWidget {
   final Color iconColor, valueColor;
   final String label, value;
   const _DetailRow({required this.icon, required this.iconColor,
-    required this.label, required this.value, required this.valueColor});
+      required this.label, required this.value, required this.valueColor});
   @override
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Icon(icon, size: 16, color: iconColor),
       const SizedBox(width: 10),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         Text(label, style: const TextStyle(
-            fontSize: 11, color: Color(0xFFAAAAB5), fontWeight: FontWeight.w500)),
+            fontSize: 11, color: Color(0xFFAAAAB5),
+            fontWeight: FontWeight.w500)),
         const SizedBox(height: 2),
-        Text(value, style: TextStyle(fontSize: 14,
-            fontWeight: FontWeight.w600, color: valueColor)),
+        Text(value, style: TextStyle(
+            fontSize: 14, fontWeight: FontWeight.w600, color: valueColor)),
       ])),
     ],
   );
@@ -1235,22 +1866,28 @@ class _LinkedDocCard extends StatelessWidget {
           border: Border.all(color: AppTheme.border(isDark)),
         ),
         child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           leading: Container(
             width: 44, height: 44,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(doc.isPdf ? Icons.picture_as_pdf_rounded : Icons.image_rounded,
+            child: Icon(
+                doc.isPdf
+                    ? Icons.picture_as_pdf_rounded
+                    : Icons.image_rounded,
                 color: color, size: 24),
           ),
           title: Text(doc.note.isNotEmpty ? doc.note : 'Document',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
                   color: AppTheme.text(isDark)),
               maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(doc.isPdf ? 'PDF · tap to open' : 'Image · tap to open',
-              style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark))),
+          subtitle: Text(
+              doc.isPdf ? 'PDF · tap to open' : 'Image · tap to open',
+              style: TextStyle(
+                  fontSize: 12, color: AppTheme.subtext(isDark))),
           trailing: Icon(Icons.open_in_new_rounded,
               color: AppTheme.subtext(isDark), size: 18),
         ),
@@ -1266,8 +1903,8 @@ class _EmptyState extends StatelessWidget {
   final VoidCallback? onAction;
   final bool isDark;
   const _EmptyState({required this.icon, required this.title,
-    required this.subtitle, required this.isDark,
-    this.actionLabel, this.onAction});
+      required this.subtitle, required this.isDark,
+      this.actionLabel, this.onAction});
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
@@ -1276,18 +1913,200 @@ class _EmptyState extends StatelessWidget {
         Icon(icon, size: 56,
             color: AppTheme.subtext(isDark).withValues(alpha: 0.4)),
         const SizedBox(height: 16),
-        Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
-            color: AppTheme.text(isDark))),
+        Text(title, style: TextStyle(fontSize: 18,
+            fontWeight: FontWeight.w700, color: AppTheme.text(isDark))),
         const SizedBox(height: 8),
         Text(subtitle, textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: AppTheme.subtext(isDark))),
+            style: TextStyle(fontSize: 14,
+                color: AppTheme.subtext(isDark))),
         if (actionLabel != null && onAction != null) ...[
           const SizedBox(height: 20),
-          TextButton(onPressed: onAction,
-              child: Text(actionLabel!, style: const TextStyle(
-                  color: AppTheme.primary, fontWeight: FontWeight.w700))),
+          TextButton(
+              onPressed: onAction,
+              child: Text(actionLabel!,
+                  style: const TextStyle(
+                      color: AppTheme.primary,
+                      fontWeight: FontWeight.w700))),
         ],
       ]),
     ),
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NUDGE INSIGHT CARD — contextual tip at bottom of Tasks tab
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _NudgeInsightCard extends StatelessWidget {
+  final List<Task> tasks;
+  final bool isDark;
+  const _NudgeInsightCard({required this.tasks, required this.isDark});
+
+  String get _headline {
+    final now = DateTime.now();
+    final urgentSoon = tasks.where((t) =>
+        !t.isDone &&
+        !t.deadline.isBefore(now) &&
+        t.deadline.difference(now).inHours < 24).length;
+    final overdue = tasks.where((t) =>
+        !t.isDone && t.deadline.isBefore(now)).length;
+    if (overdue > 0) {
+      return '$overdue overdue task${overdue == 1 ? "" : "s"} — tackle ${overdue == 1 ? "it" : "them"} first to protect your streak.';
+    }
+    if (urgentSoon > 0) {
+      return '$urgentSoon urgent task${urgentSoon == 1 ? "" : "s"} due in the next 24 hours.';
+    }
+    final allDone = tasks.every((t) => t.isDone);
+    if (allDone && tasks.isNotEmpty) return 'All tasks done! Great work — your streak is safe.';
+    return 'Check off today\'s tasks to keep your streak going.';
+  }
+
+  String get _tip {
+    final overdue = tasks.where((t) => !t.isDone && t.deadline.isBefore(DateTime.now())).length;
+    if (overdue > 0) return 'Tip: complete overdue items first to keep your streak active.';
+    return 'Tip: urgent tasks protect your streak — tackle them early.';
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: AppTheme.primary.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.12)),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Container(
+          width: 32, height: 32,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [AppTheme.primary, AppTheme.primaryContainer],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.auto_awesome_rounded,
+              color: Colors.white, size: 16),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(_headline,
+              style: GoogleFonts.manrope(
+                fontSize: 13, fontWeight: FontWeight.w700,
+                color: AppTheme.primary)),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      Text(_tip,
+          style: GoogleFonts.manrope(
+            fontSize: 12, color: AppTheme.subtext(isDark))),
+    ]),
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CELEBRATION SHEET — shown when a task is marked done
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _CelebrationSheet extends StatelessWidget {
+  final String taskName;
+  final int xp, streak;
+  final bool isDark;
+  const _CelebrationSheet({
+    required this.taskName,
+    required this.xp,
+    required this.streak,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      color: AppTheme.card(isDark),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      // drag handle
+      Container(
+        width: 40, height: 4,
+        decoration: BoxDecoration(
+          color: AppTheme.border(isDark),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+      const SizedBox(height: 24),
+      // checkmark
+      Container(
+        width: 72, height: 72,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [AppTheme.calm, Color(0xFF34D399)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.check_rounded, color: Colors.white, size: 36),
+      ),
+      const SizedBox(height: 16),
+      Text('Task crushed!',
+          style: GoogleFonts.manrope(
+            fontSize: 22, fontWeight: FontWeight.w800,
+            color: AppTheme.text(isDark))),
+      const SizedBox(height: 6),
+      Text(taskName,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.manrope(
+            fontSize: 14, color: AppTheme.subtext(isDark))),
+      const SizedBox(height: 16),
+      // XP + streak pills
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceLow(isDark),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text('+10 XP  ·  $xp total',
+              style: GoogleFonts.manrope(
+                fontSize: 13, fontWeight: FontWeight.w800,
+                color: AppTheme.primary)),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceLow(isDark),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(streak > 0 ? '🔥 $streak day streak' : '🚀 Start streak',
+              style: GoogleFonts.manrope(
+                fontSize: 13, fontWeight: FontWeight.w800,
+                color: AppTheme.calm)),
+        ),
+      ]),
+      const SizedBox(height: 24),
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: () => Navigator.pop(context),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primary,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+          ),
+          child: Text('Keep going!',
+              style: GoogleFonts.manrope(
+                fontSize: 15, fontWeight: FontWeight.w800)),
+        ),
+      ),
+    ]),
   );
 }

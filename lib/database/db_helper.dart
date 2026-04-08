@@ -14,20 +14,28 @@ class DBHelper {
 
   Future<Database> _init() async {
     final path = join(await getDatabasesPath(), 'nudge_v2.db');
-    return openDatabase(path, version: 1, onCreate: _create);
+    return openDatabase(path, version: 2, onCreate: _create, onUpgrade: _migrate);
+  }
+
+  Future<void> _migrate(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute(
+          'ALTER TABLE tasks ADD COLUMN completedAt INTEGER');
+    }
   }
 
   Future<void> _create(Database db, int _) async {
     await db.execute('''
       CREATE TABLE tasks (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        name     TEXT    NOT NULL,
-        deadline TEXT    NOT NULL,
-        isDone   INTEGER NOT NULL DEFAULT 0,
-        priority TEXT    NOT NULL DEFAULT 'normal',
-        taskType TEXT    NOT NULL DEFAULT 'assignment',
-        subject  TEXT    NOT NULL DEFAULT '',
-        docId    INTEGER
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT    NOT NULL,
+        deadline    TEXT    NOT NULL,
+        isDone      INTEGER NOT NULL DEFAULT 0,
+        priority    TEXT    NOT NULL DEFAULT 'normal',
+        taskType    TEXT    NOT NULL DEFAULT 'assignment',
+        subject     TEXT    NOT NULL DEFAULT '',
+        docId       INTEGER,
+        completedAt INTEGER
       )
     ''');
 

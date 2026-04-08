@@ -1,9 +1,12 @@
 // lib/screens/splash_screen.dart
 
 import 'package:flutter/material.dart';
+import '../database/db_helper.dart';
 import '../services/share_service.dart';
+import '../services/user_prefs.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
+import 'onboarding_screen.dart';
 import 'text_import_screen.dart';
 import 'doc_import_screen.dart';
 
@@ -52,6 +55,25 @@ class _SplashScreenState extends State<SplashScreen>
       dest = const HomeScreen();
     }
 
+    // ── Onboarding gate ────────────────────────────────────────────────────
+    // Only show onboarding on a true fresh install. Existing users who have
+    // tasks in the DB are silently marked as setup-complete so they never see
+    // the onboarding flow unexpectedly.
+    final setupDone = await UserPrefs.getSetupCompleted();
+    if (!mounted) return;
+    if (!setupDone) {
+      final existingTasks = await DBHelper.instance.getAllTasks();
+      if (!mounted) return;
+      if (existingTasks.isNotEmpty) {
+        // Existing user — quietly mark setup done and proceed normally.
+        await UserPrefs.setSetupCompleted(true);
+      } else {
+        // Fresh install — show onboarding, passing the intended destination.
+        dest = OnboardingScreen(destination: dest);
+      }
+    }
+
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(PageRouteBuilder(
       pageBuilder: (_, a, __) => dest,
       transitionsBuilder: (_, anim, __, child) =>

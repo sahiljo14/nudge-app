@@ -26,6 +26,13 @@ subprojects {
         extensions.findByType<org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension>()?.apply {
             jvmToolchain(21)
         }
+        // Catch-all: ensures KotlinCompile tasks align to 21 for plugins that
+        // register a non-Android Kotlin extension (e.g. shared_preferences_android).
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            compilerOptions {
+                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+            }
+        }
     }
 }
 

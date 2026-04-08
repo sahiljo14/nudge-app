@@ -47,7 +47,18 @@ class TaskCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppTheme.card(isDark),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppTheme.border(isDark)),
+              border: isDark
+                  ? Border.all(color: AppTheme.border(isDark))
+                  : null,
+              boxShadow: isDark
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: const Color(0xFF4A40E0).withValues(alpha: 0.06),
+                        blurRadius: 20,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
             ),
             child: Padding(
               // Extra left padding to make room for the accent bar
@@ -106,15 +117,15 @@ class TaskCard extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 7, vertical: 3),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFFF0EE),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFFFFCCBB)),
+                                color: AppTheme.secondary
+                                    .withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(100),
                               ),
-                              child: const Text('URGENT',
+                              child: Text('URGENT',
                                   style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w800,
-                                      color: Color(0xFF993C1D),
+                                      color: AppTheme.secondary,
                                       letterSpacing: 0.8)),
                             ),
                         ]),
