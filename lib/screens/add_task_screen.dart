@@ -12,6 +12,25 @@ import '../database/db_helper.dart';
 import '../services/notification_service.dart';
 import 'home_screen.dart';
 
+// ── Mutable task holder for multi-task preview editing ───────────────────────
+
+class _MutableTask {
+  final TextEditingController nameCtrl;
+  DateTime deadline;
+  String taskType;
+  String subject;
+  String priority;
+
+  _MutableTask.fromParsed(ParsedTask p)
+      : nameCtrl = TextEditingController(text: p.taskName),
+        deadline = p.deadline,
+        taskType = p.taskType,
+        subject  = p.subject,
+        priority = p.priority;
+
+  void dispose() => nameCtrl.dispose();
+}
+
 // ── Reminder model ────────────────────────────────────────────────────────────
 
 class _Reminder {
@@ -25,17 +44,24 @@ class _Reminder {
 
 class AddTaskScreen extends StatefulWidget {
   final String prefill;
-  const AddTaskScreen({super.key, this.prefill = ''});
+  final Task? initialTask; // non-null → edit mode
+  const AddTaskScreen({super.key, this.prefill = '', this.initialTask});
   @override
   State<AddTaskScreen> createState() => _AddTaskScreenState();
 }
 
 class _AddTaskScreenState extends State<AddTaskScreen> {
-  final _ctrl  = TextEditingController();
-  final _focus = FocusNode();
+  final _ctrl      = TextEditingController();
+  final _focus     = FocusNode();
+  final _descCtrl  = TextEditingController();
+  final _nameCtrl  = TextEditingController(); // edit-mode name field
+  final List<TextEditingController> _linkCtrls = [];  // multiple links
+  final List<_MutableTask> _multiTasks = [];          // multi-task preview
   ParsedTask? _parsed;
   bool _showReview = false;
   bool _saving     = false;
+
+  bool get _isEditMode => widget.initialTask != null;
 
   late DateTime _deadline;
   late String   _priority;
@@ -58,7 +84,36 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     _priority = 'normal';
     _taskType = 'assignment';
     _subject  = '';
-    if (widget.prefill.isNotEmpty) {
+
+    // Initialise link controllers
+    if (widget.initialTask != null) {
+      final links = widget.initialTask!.referenceLinks;
+      _linkCtrls.addAll(links.isEmpty
+          ? [TextEditingController()]
+          : links.map((l) => TextEditingController(text: l)));
+    } else {
+      _linkCtrls.add(TextEditingController());
+    }
+
+    if (_isEditMode) {
+      final t = widget.initialTask!;
+      _deadline    = t.deadline;
+      _priority    = t.priority;
+      _taskType    = t.taskType;
+      _subject     = t.subject;
+      _nameCtrl.text = t.name;
+      _descCtrl.text = t.description;
+      _parsed = ParsedTask(
+        taskName:      t.name,
+        taskType:      t.taskType,
+        deadline:      t.deadline,
+        deadlineLabel: DateFormat('d MMMM').format(t.deadline),
+        priority:      t.priority,
+        subject:       t.subject,
+        confidence:    1.0,
+      );
+      _showReview = true;
+    } else if (widget.prefill.isNotEmpty) {
       _ctrl.text = widget.prefill;
       WidgetsBinding.instance.addPostFrameCallback((_) => _parse());
     } else {
@@ -71,7 +126,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   void dispose() {
     _ctrl.removeListener(_onTextChanged);
     _ctrl.dispose();
+    _descCtrl.dispose();
+    _nameCtrl.dispose();
     _focus.dispose();
+    for (final c in _linkCtrls) c.dispose();
+    for (final t in _multiTasks) t.dispose();
     super.dispose();
   }
 
@@ -91,6 +150,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _taskType   = r.taskType;
       _subject    = r.subject;
       _showReview = true;
+      // Populate mutable task list for multi-task preview
+      for (final t in _multiTasks) t.dispose();
+      _multiTasks.clear();
+      if (r.isMultiTask && r.subtasks.isNotEmpty) {
+        _multiTasks.addAll(r.subtasks.map(_MutableTask.fromParsed));
+      }
     });
   }
 
@@ -119,6 +184,45 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     if (time == null) return;
     setState(() {
       _deadline = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    });
+  }
+
+  // ── Link list management ─────────────────────────────────────────────────────
+  void _addLink() => setState(() => _linkCtrls.add(TextEditingController()));
+
+  void _removeLink(int i) => setState(() {
+    _linkCtrls[i].dispose();
+    _linkCtrls.removeAt(i);
+  });
+
+  // ── Per-task deadline picker for multi-task preview ──────────────────────────
+  Future<void> _pickDeadlineFor(int index) async {
+    final initial = _multiTasks[index].deadline;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+            colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: AppTheme.primary)),
+        child: child!,
+      ),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+            colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: AppTheme.primary)),
+        child: child!,
+      ),
+    );
+    if (time == null) return;
+    setState(() {
+      _multiTasks[index].deadline =
+          DateTime(date.year, date.month, date.day, time.hour, time.minute);
     });
   }
 
@@ -248,34 +352,88 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _save() async {
-    if (_ctrl.text.trim().isEmpty) return;
+    if (!_isEditMode && _ctrl.text.trim().isEmpty) return;
     if (!_showReview) { _parse(); return; }
     setState(() => _saving = true);
 
-    final taskName = _parsed?.taskName ?? _ctrl.text.trim();
-    final task = Task(
-      name:     taskName.isNotEmpty ? taskName : _ctrl.text.trim(),
-      deadline: _deadline,
-      priority: _priority,
-      taskType: _taskType,
-      subject:  _subject,
-    );
+    // ── Edit mode: update existing task ──────────────────────────
+    if (_isEditMode) {
+      final t = widget.initialTask!;
+      final name = _nameCtrl.text.trim();
+      final updated = t.copyWith(
+        name:          name.isNotEmpty ? name : t.name,
+        deadline:      _deadline,
+        priority:      _priority,
+        taskType:      _taskType,
+        subject:       _subject,
+        description:   _descCtrl.text.trim(),
+        referenceLink: _linkCtrls.map((c) => c.text.trim()).where((s) => s.isNotEmpty).join('\n'),
+      );
+      await DBHelper.instance.updateTask(updated);
+      await _scheduleSelected(updated);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      return;
+    }
 
-    final id    = await DBHelper.instance.createTask(task);
-    final saved = task.copyWith(id: id);
+    final desc    = _descCtrl.text.trim();
+    final linkStr = _linkCtrls
+        .map((c) => c.text.trim())
+        .where((s) => s.isNotEmpty)
+        .join('\n');
 
-    await _scheduleSelected(saved);
-
-    // Save all attached documents
-    for (final f in _attachedFiles) {
-      await DBHelper.instance.createDocument(NudgeDocument(
-        filePath: f.path,
-        mimeType: f.mime,
-        subject:  _subject,
-        note:     f.name,
-        savedAt:  DateTime.now(),
-        taskId:   id,
-      ));
+    if (_parsed != null && _parsed!.isMultiTask && _multiTasks.isNotEmpty) {
+      // Multi-task: create one DB task per (user-edited) mutable task
+      for (final mt in _multiTasks) {
+        final name = mt.nameCtrl.text.trim();
+        final task = Task(
+          name:          name.isNotEmpty ? name : _ctrl.text.trim(),
+          deadline:      mt.deadline,
+          priority:      mt.priority,
+          taskType:      mt.taskType,
+          subject:       mt.subject.isNotEmpty ? mt.subject : _subject,
+          description:   desc,
+          referenceLink: linkStr,
+        );
+        final id    = await DBHelper.instance.createTask(task);
+        final saved = task.copyWith(id: id);
+        await _scheduleSelected(saved);
+        for (final f in _attachedFiles) {
+          await DBHelper.instance.createDocument(NudgeDocument(
+            filePath: f.path,
+            mimeType: f.mime,
+            subject:  task.subject,
+            note:     f.name,
+            savedAt:  DateTime.now(),
+            taskId:   id,
+          ));
+        }
+      }
+    } else {
+      // Single-task path
+      final taskName = _parsed?.taskName ?? _ctrl.text.trim();
+      final task = Task(
+        name:          taskName.isNotEmpty ? taskName : _ctrl.text.trim(),
+        deadline:      _deadline,
+        priority:      _priority,
+        taskType:      _taskType,
+        subject:       _subject,
+        description:   desc,
+        referenceLink: linkStr,
+      );
+      final id    = await DBHelper.instance.createTask(task);
+      final saved = task.copyWith(id: id);
+      await _scheduleSelected(saved);
+      for (final f in _attachedFiles) {
+        await DBHelper.instance.createDocument(NudgeDocument(
+          filePath: f.path,
+          mimeType: f.mime,
+          subject:  _subject,
+          note:     f.name,
+          savedAt:  DateTime.now(),
+          taskId:   id,
+        ));
+      }
     }
 
     if (!mounted) return;
@@ -310,19 +468,30 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       backgroundColor: AppTheme.lightSurface,
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          icon: Icon(_isEditMode
+              ? Icons.arrow_back_rounded
+              : Icons.close_rounded),
+          onPressed: () {
+            if (_isEditMode) {
+              Navigator.of(context).pop();
+            } else {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
                 (_) => false,
-          ),
+              );
+            }
+          },
         ),
-        title: const Text('New task'),
+        title: Text(_isEditMode ? 'Edit task' : 'New task'),
         actions: [
           if (_showReview)
             TextButton(
               onPressed: _saving ? null : _save,
-              child: const Text('Save',
-                  style: TextStyle(
+              child: Text(
+                  (_parsed?.isMultiTask ?? false) && _multiTasks.isNotEmpty
+                      ? 'Save all'
+                      : 'Save',
+                  style: const TextStyle(
                       color: AppTheme.primary,
                       fontWeight: FontWeight.w700,
                       fontSize: 15)),
@@ -337,6 +506,33 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_isEditMode) ...[
+                // Edit mode: name text field
+                const Text('Task name',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                        color: Color(0xFF888899), letterSpacing: 0.3)),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.lightCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.lightBorder),
+                  ),
+                  child: TextField(
+                    controller: _nameCtrl,
+                    textCapitalization: TextCapitalization.sentences,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A2E)),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ] else ...[
               const Text('What do you need to do?',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
                       color: Color(0xFF1A1A2E), letterSpacing: -0.5)),
@@ -429,18 +625,39 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     ),
                   )).toList(),
                 ),
-              ],
+              ], // end if (!_showReview)
+              ], // end else (non-edit-mode NLP input block)
 
               // Review card + extras
               if (_showReview && _parsed != null) ...[
                 const SizedBox(height: 24),
-                _ReviewCard(
-                  parsed: _parsed!, deadline: _deadline,
-                  priority: _priority, taskType: _taskType, subject: _subject,
-                  onPickDeadline:   _pickDeadline,
-                  onPriorityChange: (v) => setState(() => _priority = v),
-                  onTypeChange:     (v) => setState(() => _taskType = v),
-                  onSubjectChange:  (v) => setState(() => _subject = v),
+                if (_parsed!.isMultiTask && _multiTasks.isNotEmpty)
+                  _MultiTaskPreviewSection(
+                    tasks:          _multiTasks,
+                    onRemove:       (i) => setState(() {
+                      _multiTasks[i].dispose();
+                      _multiTasks.removeAt(i);
+                      if (_multiTasks.isEmpty) {
+                        _showReview = false;
+                      }
+                    }),
+                    onPickDeadline: _pickDeadlineFor,
+                  )
+                else
+                  _ReviewCard(
+                    parsed: _parsed!, deadline: _deadline,
+                    priority: _priority, taskType: _taskType, subject: _subject,
+                    onPickDeadline:   _pickDeadline,
+                    onPriorityChange: (v) => setState(() => _priority = v),
+                    onTypeChange:     (v) => setState(() => _taskType = v),
+                    onSubjectChange:  (v) => setState(() => _subject = v),
+                  ),
+                const SizedBox(height: 16),
+                _DescLinksSection(
+                  descCtrl:    _descCtrl,
+                  linkCtrls:   _linkCtrls,
+                  onAddLink:   _addLink,
+                  onRemoveLink: _removeLink,
                 ),
                 const SizedBox(height: 16),
                 _RemindersSection(
@@ -464,7 +681,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     child: _saving
                         ? const SizedBox(width: 20, height: 20,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Save task'),
+                        : Text(_parsed!.isMultiTask && _multiTasks.isNotEmpty
+                            ? 'Save ${_multiTasks.length} task${_multiTasks.length == 1 ? "" : "s"}'
+                            : 'Save task'),
                   ),
                 ),
               ],
@@ -731,7 +950,7 @@ class _ReviewCard extends StatelessWidget {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('Task type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
-          ...['assignment', 'exam', 'submission', 'reminder', 'meeting'].map((t) => ListTile(
+          ...['assignment', 'exam', 'submission', 'reminder', 'meeting', 'personal'].map((t) => ListTile(
             leading: Icon(AppTheme.taskTypeIcon(t), color: AppTheme.primary),
             title: Text(t[0].toUpperCase() + t.substring(1)),
             selected: taskType == t,
@@ -741,6 +960,118 @@ class _ReviewCard extends StatelessWidget {
           )),
         ]),
       ),
+    );
+  }
+}
+
+// ── Description + Links section (multiple links) ─────────────────────────────
+
+class _DescLinksSection extends StatelessWidget {
+  final TextEditingController descCtrl;
+  final List<TextEditingController> linkCtrls;
+  final VoidCallback onAddLink;
+  final ValueChanged<int> onRemoveLink;
+
+  const _DescLinksSection({
+    required this.descCtrl,
+    required this.linkCtrls,
+    required this.onAddLink,
+    required this.onRemoveLink,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.lightCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.lightBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.05),
+            borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+            border: Border(bottom: BorderSide(color: AppTheme.lightBorder)),
+          ),
+          child: Row(children: [
+            const Icon(Icons.notes_rounded, size: 14, color: AppTheme.primary),
+            const SizedBox(width: 6),
+            const Text('Notes & links',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+            const Spacer(),
+            Text('optional', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            TextField(
+              controller: descCtrl,
+              maxLines: 2, minLines: 1,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: 'Description or notes…',
+                hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A2E)),
+            ),
+            const SizedBox(height: 10),
+            Divider(color: AppTheme.lightBorder, height: 1),
+            const SizedBox(height: 10),
+            // Link fields
+            ...List.generate(linkCtrls.length, (i) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(Icons.link_rounded, size: 16, color: Colors.grey.shade400),
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: linkCtrls[i],
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(
+                      hintText: linkCtrls.length > 1
+                          ? 'Link ${i + 1} (optional)'
+                          : 'Reference link (optional)',
+                      hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A2E)),
+                  ),
+                ),
+                if (linkCtrls.length > 1)
+                  GestureDetector(
+                    onTap: () => onRemoveLink(i),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Icon(Icons.remove_circle_outline_rounded,
+                          size: 18, color: Colors.grey.shade400),
+                    ),
+                  ),
+              ]),
+            )),
+            // Add link button
+            GestureDetector(
+              onTap: onAddLink,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.add_rounded, size: 14, color: AppTheme.primary),
+                const SizedBox(width: 4),
+                const Text('Add link',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary)),
+              ]),
+            ),
+          ]),
+        ),
+      ]),
     );
   }
 }
@@ -1001,6 +1332,191 @@ class _AttachmentSection extends StatelessWidget {
               ),
             ),
           ]),
+        ),
+      ]),
+    );
+  }
+}
+
+// ── Multi-task preview section ────────────────────────────────────────────────
+
+class _MultiTaskPreviewSection extends StatelessWidget {
+  final List<_MutableTask> tasks;
+  final ValueChanged<int> onRemove;
+  final ValueChanged<int> onPickDeadline;
+
+  const _MultiTaskPreviewSection({
+    required this.tasks,
+    required this.onRemove,
+    required this.onPickDeadline,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.lightCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.lightBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.05),
+            borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+            border: Border(bottom: BorderSide(color: AppTheme.lightBorder)),
+          ),
+          child: Row(children: [
+            const Icon(Icons.auto_awesome_rounded, size: 14, color: AppTheme.primary),
+            const SizedBox(width: 6),
+            Text('${tasks.length} task${tasks.length == 1 ? "" : "s"} detected',
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+            const Spacer(),
+            Text('Tap to edit • tap date to change',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+          ]),
+        ),
+        // Task rows
+        ...tasks.asMap().entries.map((entry) {
+          final i    = entry.key;
+          final task = entry.value;
+          return _MultiTaskRow(
+            task:          task,
+            index:         i,
+            isLast:        i == tasks.length - 1,
+            onRemove:      onRemove,
+            onPickDeadline: onPickDeadline,
+          );
+        }),
+      ]),
+    );
+  }
+}
+
+class _MultiTaskRow extends StatelessWidget {
+  final _MutableTask task;
+  final int index;
+  final bool isLast;
+  final ValueChanged<int> onRemove;
+  final ValueChanged<int> onPickDeadline;
+
+  const _MultiTaskRow({
+    required this.task,
+    required this.index,
+    required this.isLast,
+    required this.onRemove,
+    required this.onPickDeadline,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final sc = AppTheme.subjectColor(
+        task.subject.isNotEmpty ? task.subject : 'default');
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: index > 0
+            ? Border(top: BorderSide(color: AppTheme.lightBorder))
+            : null,
+        borderRadius: isLast
+            ? const BorderRadius.only(
+                bottomLeft: Radius.circular(16),
+                bottomRight: Radius.circular(16))
+            : null,
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Index bubble
+        Container(
+          width: 24, height: 24,
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.10),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text('${index + 1}',
+                style: const TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w800,
+                    color: AppTheme.primary)),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Editable task name
+            TextField(
+              controller: task.nameCtrl,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A1A2E)),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              textCapitalization: TextCapitalization.sentences,
+            ),
+            const SizedBox(height: 6),
+            // Chips row
+            Wrap(spacing: 6, runSpacing: 4, children: [
+              // Deadline chip (tappable)
+              GestureDetector(
+                onTap: () => onPickDeadline(index),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.calendar_today_rounded,
+                        size: 11, color: AppTheme.primary),
+                    const SizedBox(width: 4),
+                    Text(DateFormat('d MMM · h:mm a').format(task.deadline),
+                        style: const TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w600,
+                            color: AppTheme.primary)),
+                  ]),
+                ),
+              ),
+              if (task.subject.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: sc.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(task.subject,
+                      style: TextStyle(
+                          fontSize: 10, fontWeight: FontWeight.w600, color: sc)),
+                ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightSurface,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppTheme.lightBorder),
+                ),
+                child: Text(
+                    task.taskType[0].toUpperCase() + task.taskType.substring(1),
+                    style: const TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w600,
+                        color: Color(0xFF888899))),
+              ),
+            ]),
+          ]),
+        ),
+        // Remove button
+        GestureDetector(
+          onTap: () => onRemove(index),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Icon(Icons.remove_circle_outline_rounded,
+                size: 20, color: Colors.grey.shade400),
+          ),
         ),
       ]),
     );

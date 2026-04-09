@@ -2,6 +2,8 @@
 // First-run onboarding — 3 lightweight steps.
 // Never shown to existing users who already have tasks (handled in splash_screen).
 
+import 'dart:io' as import_dart_io;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -24,6 +26,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // Step 1 — name
   final _nameCtrl = TextEditingController();
 
+  // Step 3 — photo
+  String? _selectedPhotoPath;
+
   // Step 2 — subjects
   static const _predefined = [
     'Maths', 'Physics', 'Chemistry', 'English',
@@ -45,7 +50,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _next() {
     HapticFeedback.selectionClick();
-    if (_step < 2) {
+    if (_step < 3) {
       setState(() => _step++);
     } else {
       _finish();
@@ -64,8 +69,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     setState(() => _saving = true);
     final name     = _nameCtrl.text.trim();
     final subjects = _selected.toList();
-    if (name.isNotEmpty)      await UserPrefs.setUserName(name);
-    if (subjects.isNotEmpty)  await UserPrefs.setUserSubjects(subjects);
+    if (name.isNotEmpty)            await UserPrefs.setUserName(name);
+    if (subjects.isNotEmpty)        await UserPrefs.setUserSubjects(subjects);
+    if (_selectedPhotoPath != null) await UserPrefs.setProfileImagePath(_selectedPhotoPath);
     await UserPrefs.setSetupCompleted(true);
     _navigate();
   }
@@ -130,7 +136,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _ProgressDots(step: _step, total: 3, isDark: isDark),
+                _ProgressDots(step: _step, total: 4, isDark: isDark),
                 TextButton(
                   onPressed: _saving ? null : _skip,
                   style: TextButton.styleFrom(
@@ -193,12 +199,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         onAddCustom: _addCustomSubject,
         isDark: isDark,
       );
+      case 3: return _StepPhoto(
+        selectedPath: _selectedPhotoPath,
+        onPick: () async {
+          final r = await FilePicker.platform.pickFiles(type: FileType.image);
+          if (r != null && r.files.single.path != null) {
+            setState(() => _selectedPhotoPath = r.files.single.path);
+          }
+        },
+        onRemove: () => setState(() => _selectedPhotoPath = null),
+        isDark: isDark,
+      );
       default: return const SizedBox.shrink();
     }
   }
 
   Widget _buildButtons(bool isDark) {
-    final isLast = _step == 2;
+    final isLast = _step == 3;
     final isFirst = _step == 0;
 
     if (isFirst) {
@@ -525,3 +542,90 @@ class _PrimaryButton extends StatelessWidget {
     ),
   );
 }
+
+// ── Step 3: Profile photo ─────────────────────────────────────────────────────
+
+class _StepPhoto extends StatelessWidget {
+  final String? selectedPath;
+  final VoidCallback onPick;
+  final VoidCallback onRemove;
+  final bool isDark;
+  const _StepPhoto({
+    required this.selectedPath,
+    required this.onPick,
+    required this.onRemove,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto = selectedPath != null && selectedPath!.isNotEmpty;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Add a\nprofile photo',
+            style: GoogleFonts.manrope(
+              fontSize: 28, fontWeight: FontWeight.w800,
+              letterSpacing: -0.6, height: 1.15,
+              color: AppTheme.text(isDark))),
+        const SizedBox(height: 8),
+        Text('Optional — you can always change this later.',
+            style: GoogleFonts.manrope(
+              fontSize: 13, color: AppTheme.subtext(isDark))),
+        const SizedBox(height: 32),
+        Center(
+          child: GestureDetector(
+            onTap: onPick,
+            child: Container(
+              width: 120, height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.primary.withValues(alpha: 0.10),
+                border: Border.all(
+                    color: AppTheme.primary.withValues(alpha: 0.3), width: 2),
+                image: hasPhoto
+                    ? DecorationImage(
+                        image: FileImage(import_dart_io.File(selectedPath!)),
+                        fit: BoxFit.cover)
+                    : null,
+              ),
+              child: hasPhoto
+                  ? null
+                  : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(Icons.add_a_photo_rounded,
+                          size: 32, color: AppTheme.primary),
+                      const SizedBox(height: 6),
+                      Text('Tap to add',
+                          style: GoogleFonts.manrope(
+                              fontSize: 12, fontWeight: FontWeight.w600,
+                              color: AppTheme.primary)),
+                    ]),
+            ),
+          ),
+        ),
+        if (hasPhoto) ...[
+          const SizedBox(height: 16),
+          Center(
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              TextButton.icon(
+                onPressed: onPick,
+                icon: const Icon(Icons.photo_camera_rounded, size: 16),
+                label: Text('Change',
+                    style: GoogleFonts.manrope(
+                        fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+              TextButton(
+                onPressed: onRemove,
+                child: Text('Remove',
+                    style: GoogleFonts.manrope(
+                        fontSize: 13, fontWeight: FontWeight.w600,
+                        color: const Color(0xFFE53935))),
+              ),
+            ]),
+          ),
+        ],
+      ]),
+    );
+  }
+}
+

@@ -1,5 +1,7 @@
 // lib/screens/profile_screen.dart
 
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../database/db_helper.dart';
@@ -19,6 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<Task> _allTasks = [];
   String _userName    = '';
   List<String> _userSubjects = [];
+  String? _profileImagePath;
   bool _loading = true;
 
   @override
@@ -32,13 +35,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       DBHelper.instance.getAllTasks(),
       UserPrefs.getUserName(),
       UserPrefs.getUserSubjects(),
+      UserPrefs.getProfileImagePath(),
     ]);
     if (mounted) {
       setState(() {
-        _allTasks     = results[0] as List<Task>;
-        _userName     = results[1] as String;
-        _userSubjects = results[2] as List<String>;
-        _loading      = false;
+        _allTasks          = results[0] as List<Task>;
+        _userName          = results[1] as String;
+        _userSubjects      = results[2] as List<String>;
+        _profileImagePath  = results[3] as String?;
+        _loading           = false;
       });
     }
   }
@@ -49,9 +54,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _EditProfileSheet(
-        initialName:     _userName,
-        initialSubjects: _userSubjects,
-        isDark:          isDark,
+        initialName:      _userName,
+        initialSubjects:  _userSubjects,
+        initialImagePath: _profileImagePath,
+        isDark:           isDark,
       ),
     );
     // Reload in case the user saved changes.
@@ -220,18 +226,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     NudgeCard(
                       padding: const EdgeInsets.all(16),
                       child: Row(children: [
-                        Container(
-                          width: 52, height: 52,
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [AppTheme.primary, AppTheme.primaryContainer],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.person_rounded,
-                              color: Colors.white, size: 26),
+                        _ProfileAvatarWidget(
+                          imagePath: _profileImagePath,
+                          name: _userName,
+                          size: 52,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -542,10 +540,12 @@ class _BadgeTile extends StatelessWidget {
 class _EditProfileSheet extends StatefulWidget {
   final String initialName;
   final List<String> initialSubjects;
+  final String? initialImagePath;
   final bool isDark;
   const _EditProfileSheet({
     required this.initialName,
     required this.initialSubjects,
+    this.initialImagePath,
     required this.isDark,
   });
 
@@ -559,6 +559,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final Set<String> _selected;
   final List<String> _custom = [];
   bool _saving = false;
+  String? _imagePath;
 
   static const _predefined = [
     'Maths', 'Physics', 'Chemistry', 'English',
@@ -572,6 +573,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _nameCtrl   = TextEditingController(text: widget.initialName);
     _customCtrl = TextEditingController();
     _selected   = Set.from(widget.initialSubjects);
+    _imagePath  = widget.initialImagePath;
     // Any subject not in predefined is custom.
     for (final s in widget.initialSubjects) {
       if (!_predefined.contains(s)) _custom.add(s);
@@ -598,11 +600,19 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     });
   }
 
+  Future<void> _pickPhoto() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.image);
+    if (result != null && result.files.single.path != null) {
+      setState(() => _imagePath = result.files.single.path);
+    }
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
     await UserPrefs.setUserName(_nameCtrl.text.trim());
     await UserPrefs.setUserSubjects(_selected.toList());
+    await UserPrefs.setProfileImagePath(_imagePath);
     if (mounted) Navigator.pop(context);
   }
 
@@ -637,6 +647,30 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                   style: GoogleFonts.manrope(
                     fontSize: 18, fontWeight: FontWeight.w800,
                     color: AppTheme.text(isDark))),
+              const SizedBox(height: 20),
+              // Profile photo picker
+              Center(
+                child: Column(children: [
+                  _ProfileAvatarWidget(imagePath: _imagePath, name: _nameCtrl.text, size: 72),
+                  const SizedBox(height: 10),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    TextButton.icon(
+                      onPressed: _pickPhoto,
+                      icon: const Icon(Icons.photo_camera_rounded, size: 16),
+                      label: Text(_imagePath != null ? 'Change photo' : 'Add photo',
+                          style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                    if (_imagePath != null)
+                      TextButton(
+                        onPressed: () => setState(() => _imagePath = null),
+                        child: Text('Remove',
+                            style: GoogleFonts.manrope(
+                                fontSize: 13, fontWeight: FontWeight.w600,
+                                color: const Color(0xFFE53935))),
+                      ),
+                  ]),
+                ]),
+              ),
               const SizedBox(height: 16),
               // Name field
               Text('Name',
@@ -767,6 +801,46 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Profile avatar widget ─────────────────────────────────────────────────────
+
+class _ProfileAvatarWidget extends StatelessWidget {
+  final String? imagePath;
+  final String name;
+  final double size;
+  const _ProfileAvatarWidget({this.imagePath, this.name = '', this.size = 52});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = imagePath != null && imagePath!.isNotEmpty
+        && File(imagePath!).existsSync();
+    final initials = name.isNotEmpty
+        ? name.trim().split(RegExp(r'\s+')).take(2)
+              .map((w) => w[0].toUpperCase()).join()
+        : '?';
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: hasImage ? null : const LinearGradient(
+          colors: [AppTheme.primary, AppTheme.primaryContainer],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        image: hasImage
+            ? DecorationImage(image: FileImage(File(imagePath!)), fit: BoxFit.cover)
+            : null,
+      ),
+      child: hasImage ? null : Center(
+        child: Text(initials,
+            style: TextStyle(
+                fontSize: size * 0.35,
+                fontWeight: FontWeight.w700,
+                color: Colors.white)),
       ),
     );
   }

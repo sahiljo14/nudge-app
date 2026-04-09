@@ -9,10 +9,19 @@ class Task {
   final DateTime deadline;
   final bool isDone;
   final String priority;    // 'urgent' | 'normal'
-  final String taskType;    // 'assignment'|'exam'|'submission'|'reminder'|'meeting'|'unknown'
+  final String taskType;    // 'assignment'|'exam'|'submission'|'reminder'|'meeting'|'unknown'|'personal'
   final String subject;     // auto-detected or user-set, e.g. 'Operating Systems'
   final int? docId;         // linked document id, nullable
   final DateTime? completedAt; // real timestamp when task was marked done; null if pending
+  final String description;   // optional notes/details
+  final String referenceLink; // newline-separated URLs (backward-compat with old single URL)
+
+  /// Parses referenceLink into individual URLs. Backward-compatible with old
+  /// single-URL format — a value without '\n' is returned as a one-element list.
+  List<String> get referenceLinks =>
+      referenceLink.isEmpty
+          ? []
+          : referenceLink.split('\n').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
   const Task({
     this.id,
@@ -24,6 +33,8 @@ class Task {
     this.subject = '',
     this.docId,
     this.completedAt,
+    this.description = '',
+    this.referenceLink = '',
   });
 
   Map<String, dynamic> toMap() => {
@@ -36,6 +47,8 @@ class Task {
     'subject': subject,
     'docId': docId,
     'completedAt': completedAt?.millisecondsSinceEpoch,
+    'description': description,
+    'referenceLink': referenceLink,
   };
 
   factory Task.fromMap(Map<String, dynamic> m) {
@@ -52,6 +65,8 @@ class Task {
       completedAt: rawCompletedAt != null
           ? DateTime.fromMillisecondsSinceEpoch(rawCompletedAt as int)
           : null,
+      description: m['description'] as String? ?? '',
+      referenceLink: m['referenceLink'] as String? ?? '',
     );
   }
 
@@ -66,6 +81,8 @@ class Task {
     int? docId,
     // Use sentinel so callers can explicitly pass completedAt: null to clear it.
     Object? completedAt = _keep,
+    String? description,
+    String? referenceLink,
   }) =>
       Task(
         id: id ?? this.id,
@@ -79,5 +96,7 @@ class Task {
         completedAt: identical(completedAt, _keep)
             ? this.completedAt
             : completedAt as DateTime?,
+        description: description ?? this.description,
+        referenceLink: referenceLink ?? this.referenceLink,
       );
 }

@@ -20,6 +20,8 @@ class _TextImportScreenState extends State<TextImportScreen> {
   late ParsedTask _parsed;
   final _nameCtrl    = TextEditingController();
   final _promptCtrl  = TextEditingController();
+  final _descCtrl    = TextEditingController();
+  final _linkCtrl    = TextEditingController();
   late DateTime _deadline;
   late String _priority;
   late String _taskType;
@@ -45,6 +47,8 @@ class _TextImportScreenState extends State<TextImportScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _promptCtrl.dispose();
+    _descCtrl.dispose();
+    _linkCtrl.dispose();
     super.dispose();
   }
 
@@ -86,11 +90,13 @@ class _TextImportScreenState extends State<TextImportScreen> {
     if (_nameCtrl.text.trim().isEmpty) return;
     setState(() => _saving = true);
     final task = Task(
-      name:     _nameCtrl.text.trim(),
-      deadline: _deadline,
-      priority: _priority,
-      taskType: _taskType,
-      subject:  _subject,
+      name:          _nameCtrl.text.trim(),
+      deadline:      _deadline,
+      priority:      _priority,
+      taskType:      _taskType,
+      subject:       _subject,
+      description:   _descCtrl.text.trim(),
+      referenceLink: _linkCtrl.text.trim(),
     );
     final id    = await DBHelper.instance.createTask(task);
     final saved = task.copyWith(id: id);
@@ -339,6 +345,26 @@ class _TextImportScreenState extends State<TextImportScreen> {
                   Icon(Icons.edit_rounded,
                       size: 14, color: Colors.grey.shade400),
                 ]),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Description + Link ────────────────────────────────────
+            TextField(
+              controller: _descCtrl,
+              maxLines: 2, minLines: 1,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText: 'Notes or description (optional)',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _linkCtrl,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                hintText: 'Reference link (optional)',
               ),
             ),
 

@@ -14,13 +14,19 @@ class DBHelper {
 
   Future<Database> _init() async {
     final path = join(await getDatabasesPath(), 'nudge_v2.db');
-    return openDatabase(path, version: 2, onCreate: _create, onUpgrade: _migrate);
+    return openDatabase(path, version: 3, onCreate: _create, onUpgrade: _migrate);
   }
 
   Future<void> _migrate(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute(
           'ALTER TABLE tasks ADD COLUMN completedAt INTEGER');
+    }
+    if (oldVersion < 3) {
+      await db.execute(
+          "ALTER TABLE tasks ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+      await db.execute(
+          "ALTER TABLE tasks ADD COLUMN referenceLink TEXT NOT NULL DEFAULT ''");
     }
   }
 
@@ -34,8 +40,10 @@ class DBHelper {
         priority    TEXT    NOT NULL DEFAULT 'normal',
         taskType    TEXT    NOT NULL DEFAULT 'assignment',
         subject     TEXT    NOT NULL DEFAULT '',
-        docId       INTEGER,
-        completedAt INTEGER
+        docId          INTEGER,
+        completedAt    INTEGER,
+        description    TEXT NOT NULL DEFAULT '',
+        referenceLink  TEXT NOT NULL DEFAULT ''
       )
     ''');
 

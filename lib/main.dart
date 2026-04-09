@@ -8,9 +8,12 @@ import 'theme/app_theme.dart';
 // ── Global theme notifier ─────────────────────────────────────────────────────
 final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await NotificationService.instance.init();
+  // Start notification init in background — does not block first frame.
+  // The splash screen provides a 1500ms buffer before any task can be created,
+  // and every schedule path guards with `if (!_ready) await init()`.
+  NotificationService.instance.init();
   runApp(const NudgeApp());
 }
 

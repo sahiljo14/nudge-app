@@ -9,12 +9,14 @@ class TaskCard extends StatelessWidget {
   final Task task;
   final VoidCallback onToggleDone;
   final VoidCallback onDelete;
+  final bool isSelected;
 
   const TaskCard({
     super.key,
     required this.task,
     required this.onToggleDone,
     required this.onDelete,
+    this.isSelected = false,
   });
 
   String get _timeLabel {
@@ -183,6 +185,22 @@ class TaskCard extends StatelessWidget {
               ),
             ),
           ),
+          // Selection overlay
+          if (isSelected)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2DC9A8).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                      color: const Color(0xFF2DC9A8), width: 2),
+                ),
+                alignment: Alignment.topRight,
+                padding: const EdgeInsets.all(10),
+                child: const Icon(Icons.check_circle_rounded,
+                    size: 18, color: Color(0xFF2DC9A8)),
+              ),
+            ),
         ],
       ),
     );
@@ -198,12 +216,33 @@ class TaskCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Dismissible(
         key: ValueKey('task_${task.id}'),
-        direction: DismissDirection.endToStart,
-        confirmDismiss: (_) async {
-          onDelete();
-          return false;
+        direction: DismissDirection.horizontal,
+        confirmDismiss: (dir) async {
+          if (dir == DismissDirection.startToEnd) {
+            onToggleDone();
+            return false; // snap back — toggling is not a dismiss
+          }
+          return true; // left swipe: actually dismiss the item
         },
+        onDismissed: (dir) {
+          if (dir == DismissDirection.endToStart) onDelete();
+        },
+        // Swipe right → mark done / unmark
         background: Container(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFC8E6C9)),
+          ),
+          child: Icon(
+            task.isDone ? Icons.replay_rounded : Icons.check_rounded,
+            color: const Color(0xFF388E3C), size: 24,
+          ),
+        ),
+        // Swipe left → delete
+        secondaryBackground: Container(
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 20),
           decoration: BoxDecoration(

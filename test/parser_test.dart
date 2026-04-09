@@ -270,6 +270,108 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════
+  // GROUP 17 — MULTI-TASK SPLIT IMPROVEMENTS  [F6]
+  // ══════════════════════════════════════════════════════════════
+  group('Multi-task split improvements', () {
+    // Period-separated two tasks — previously returned single
+    check(
+      'OS assignment Monday. CN lab report Friday.',
+      isMulti: true,
+    );
+    // Period-separated three tasks
+    check(
+      'Physics practical kal. Chemistry report Friday. ML quiz next Monday.',
+      isMulti: true,
+    );
+    // Pipe-separated (formatted message style)
+    check(
+      'Maths exam Wednesday | DBMS submission Friday',
+      isMulti: true,
+    );
+    // Newline list format — already worked; regression guard
+    check(
+      '1. Maths test Wednesday\n2. DBMS submission Friday',
+      isMulti: true,
+    );
+    // Mixed-language period-split
+    check(
+      'Kal maths test hai. Parso OS assignment submit karna hai.',
+      isMulti: true,
+    );
+    // FALSE SPLIT guard: single task with comma + time detail
+    check(
+      'Submit OS assignment by Friday, 11:59pm',
+      isMulti: false,
+    );
+    // FALSE SPLIT guard: "and" inside a noun phrase
+    check(
+      'Algorithms and data structures exam Monday',
+      isMulti: false,
+    );
+    // FALSE SPLIT guard: single task with parenthetical aside
+    check(
+      'OS assignment due Monday (submit before 11pm)',
+      isMulti: false,
+    );
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // GROUP 18 — COALESCING: DATE-ANCHORED LINES WITH INLINE DETAILS  [F8]
+  // ══════════════════════════════════════════════════════════════
+  group('Coalescing date-less fragments', () {
+    // Reference sample — must produce exactly 3 subtasks
+    test('AIML reference input produces 3 tasks', () {
+      const input = 'AIML\n'
+          '21st April CCA based on Unit-2\n'
+          '15th April: Class test based on classifiers. numericals.\n'
+          '16th April: Class test, open book. Unit 2. bring your hand written notes.';
+      final r = TaskParser.parse(input);
+      expect(r.isMultiTask, isTrue,
+          reason: 'should be multi-task');
+      expect(r.subtasks.length, equals(3),
+          reason: 'expected 3 subtasks, got ${r.subtasks.length}');
+    });
+
+    // Trailing note after single date → still single
+    check(
+      'Physics exam 21st April. Syllabus: chapters 1-3.',
+      isMulti: false,
+    );
+
+    // Two separate dated tasks via period separator
+    check(
+      'Chemistry test 15th April. Biology assignment 20th April.',
+      isMulti: true,
+    );
+
+    // Three dated lines with trailing note lines
+    test('Three dated lines with notes produces 3 tasks', () {
+      const input = '10th May: Maths exam. Bring calculator.\n'
+          '12th May: CN submission. Upload on portal.\n'
+          '15th May: ML quiz. Open book.';
+      final r = TaskParser.parse(input);
+      expect(r.isMultiTask, isTrue);
+      expect(r.subtasks.length, equals(3));
+    });
+
+    // False split guard: single task with comma+time
+    check(
+      'Submit AIML report by 21st April, 11:59pm',
+      isMulti: false,
+    );
+
+    // Subject header then 2 dated lines → 2 tasks
+    test('Subject header then 2 dated lines produces 2 tasks', () {
+      const input = 'DSA\n'
+          '10th April: Quiz on sorting\n'
+          '17th April: Assignment submission';
+      final r = TaskParser.parse(input);
+      expect(r.isMultiTask, isTrue);
+      expect(r.subtasks.length, equals(2));
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════
   // GROUP 16 — REAL WORLD WHATSAPP-STYLE MESSAGES
   // ══════════════════════════════════════════════════════════════
   group('Real world messages', () {

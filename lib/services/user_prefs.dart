@@ -6,9 +6,10 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UserPrefs {
-  static const _keySetupCompleted = 'setup_completed';
-  static const _keyUserName       = 'user_name';
-  static const _keyUserSubjects   = 'user_subjects';
+  static const _keySetupCompleted   = 'setup_completed';
+  static const _keyUserName         = 'user_name';
+  static const _keyUserSubjects     = 'user_subjects';
+  static const _keyProfileImagePath = 'profile_image_path';
 
   // ── Onboarding gate ───────────────────────────────────────────────────────
 
@@ -41,6 +42,20 @@ class UserPrefs {
       await p.remove(_keyUserName);
     } else {
       await p.setString(_keyUserName, value);
+    }
+  }
+
+  static Future<String?> getProfileImagePath() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(_keyProfileImagePath);
+  }
+
+  static Future<void> setProfileImagePath(String? path) async {
+    final p = await SharedPreferences.getInstance();
+    if (path == null || path.isEmpty) {
+      await p.remove(_keyProfileImagePath);
+    } else {
+      await p.setString(_keyProfileImagePath, path);
     }
   }
 

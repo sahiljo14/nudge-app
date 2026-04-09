@@ -85,44 +85,72 @@ class TaskParser {
   static List<String> _splitMultiTask(String raw) {
     final text = raw.toLowerCase();
 
-    // [F5] Count UNIQUE deadline signals — deduplicated so the same word
-    // appearing twice (e.g. "aaj...aaj hi") doesn't inflate the count.
-    final foundSignals = <String>{};
-    for (final w in [..._today, ..._tomorrow, ..._dayAfter]) {
-      if (_has(text, w)) foundSignals.add(w);
-    }
-    for (final w in _weekdays.keys) {
-      if (_has(text, w)) foundSignals.add(w);
-    }
-    // Month names count as individual signals
-    int monthSignals = _monthRe.allMatches(text).length;
+    // [F5][F7] Count UNIQUE deadline signals per category so that synonym
+    // clusters (e.g. "aaj" + "aaj hi", or "pudhcha somwar" + "somwar")
+    // contribute exactly ONE signal, not two.
+    //
+    // Categories:
+    //   0 = any today-family word
+    //   1 = any tomorrow-family word
+    //   2 = any day-after-tomorrow-family word
+    //   3..9 = weekday int (Mon=1 … Sun=7, offset +2 to avoid clash)
+    //   10+ = one entry per matched month name occurrence
+    int signals = 0;
+    if (_today.any((w)    => _has(text, w))) signals++;
+    if (_tomorrow.any((w) => _has(text, w))) signals++;
+    if (_dayAfter.any((w) => _has(text, w))) signals++;
 
-    // Map each found signal to its weekday int (or -1) so overlapping signals
-    // (e.g. "pudhcha somwar" + "somwar") count as ONE deadline, not two.
-    final uniqueDays = <int>{};
-    for (final s in foundSignals) {
-      final wd = _weekdays[s];
-      if (wd != null) uniqueDays.add(wd); else uniqueDays.add(s.hashCode + 100);
+    // Weekdays: deduplicate by weekday int so "pudhcha somwar" + "somwar"
+    // count as one Monday signal.
+    final uniqueWD = <int>{};
+    for (final e in _weekdays.entries) {
+      if (_has(text, e.key)) uniqueWD.add(e.value);
     }
-    final signals = uniqueDays.length + monthSignals;
+    signals += uniqueWD.length;
+
+    // Month-name occurrences each count as a distinct deadline signal.
+    signals += _monthRe.allMatches(text).length;
 
     if (signals < 2) return [raw];
 
-    final parts = raw
-        .split(RegExp(r'\s*,\s*|\n+|\s*;\s*|\s+aur\s+|\s+and\s+|\s+ani\s+',
-        caseSensitive: false))
+    // [F6] Extended splitters: period-sentence boundary and pipe separator
+    // added alongside existing comma/newline/semicolon/aur/and/ani.
+    // The partsWithDeadline guard below prevents false splits (e.g. a
+    // trailing aside "Submit by Friday. No extensions." stays single).
+    //
+    // [F8] Helper: does a text fragment contain any deadline signal?
+    bool hasSignal(String p) {
+      final pt = p.toLowerCase();
+      return [..._today, ..._tomorrow, ..._dayAfter, ..._weekdays.keys]
+          .any((w) => _has(pt, w)) || _monthRe.hasMatch(pt);
+    }
+
+    final rawParts = raw
+        .split(RegExp(
+            r'\s*,\s*|\n+|\s*;\s*|\s+aur\s+|\s+and\s+|\s+ani\s+|\.\s+|\s*\|\s*',
+            caseSensitive: false))
         .map((p) => p.trim())
         .where((p) => p.length > 5)
         .toList();
 
+    if (rawParts.length < 2) return [raw];
+
+    // [F8] Coalesce date-less fragments into their nearest preceding dated part.
+    // Prevents over-splitting on intra-task detail text like "numericals." or
+    // "open book." that follows a date-anchored line in a student message.
+    final parts = <String>[];
+    for (final p in rawParts) {
+      if (hasSignal(p) || parts.isEmpty) {
+        parts.add(p);
+      } else {
+        parts[parts.length - 1] = '${parts.last} $p';
+      }
+    }
+
     // Each part must contain at least one deadline signal to be a real subtask.
-    // If only one part has a deadline, it's a single task with a comma.
+    // If only one part has a deadline, it's a single task with a comma/period.
     if (parts.length < 2) return [raw];
-    final partsWithDeadline = parts.where((p) {
-      final pt = p.toLowerCase();
-      return [..._today, ..._tomorrow, ..._dayAfter, ..._weekdays.keys]
-          .any((w) => _has(pt, w)) || _monthRe.hasMatch(pt);
-    }).length;
+    final partsWithDeadline = parts.where(hasSignal).length;
     if (partsWithDeadline < 2) return [raw];
 
     return parts;
@@ -194,9 +222,9 @@ class TaskParser {
   static const _tomorrow = [
     'kal subah', 'kal raat', 'kal sham', 'kal tak',
     'tomorrow', 'tmrw', 'tmr',
-    'kal', 'kl', 'udya', 'udhya', 'next day', 'agle din', 'kal tak',
+    'kal', 'kl', 'udya', 'udhya', 'next day', 'agle din',
     // [F3] additions
-    'agle din', 'kal ko', 'klko', 'ugvya',
+    'kal ko', 'klko', 'ugvya',
   ];
 
   static const _dayAfter = [
