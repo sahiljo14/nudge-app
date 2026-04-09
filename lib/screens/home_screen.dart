@@ -216,7 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onSearchTap: () => setState(() => _navIndex = 1),
           onProfileTap: () async {
             await Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ProfileScreen()));
+                MaterialPageRoute(builder: (_) => const ProfileScreen()));
             await _load();
           }),
       _AllTab(
@@ -237,56 +237,59 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _loading
           ? Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : pages[_navIndex],
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addTask,
-        backgroundColor: AppTheme.primary,
-        foregroundColor: Colors.white,
-        elevation: 6,
-        child: const Icon(Icons.add_rounded, size: 28),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        color: AppTheme.navBg(isDark),
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8.0,
-        elevation: 0,
-        shadowColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        padding: EdgeInsets.zero,
-        child: SizedBox(
-          height: 60,
-          child: Row(
-            children: [
-              // Left half — equal flex so gap is always screen-center
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _NavItem(icon: Icons.home_rounded, label: 'Home',
-                        active: _navIndex == 0,
-                        onTap: () => setState(() => _navIndex = 0)),
-                    _NavItem(icon: Icons.task_alt_rounded, label: 'Tasks',
-                        active: _navIndex == 1,
-                        onTap: () => setState(() => _navIndex = 1)),
-                  ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.navBg(isDark),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 64,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _NavItem(icon: Icons.home_rounded, label: 'Home',
+                    active: _navIndex == 0,
+                    onTap: () => setState(() => _navIndex = 0)),
+                _NavItem(icon: Icons.task_alt_rounded, label: 'Tasks',
+                    active: _navIndex == 1,
+                    onTap: () => setState(() => _navIndex = 1)),
+                // Centre + button — round, inline, same height as nav items
+                GestureDetector(
+                  onTap: _addTask,
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primary.withValues(alpha: 0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.add_rounded,
+                        color: Colors.white, size: 26),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 72), // gap for center FAB
-              // Right half — mirror of left
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _NavItem(icon: Icons.folder_rounded, label: 'Docs',
-                        active: _navIndex == 2,
-                        onTap: () => setState(() => _navIndex = 2)),
-                    _NavItem(icon: Icons.settings_rounded, label: 'Settings',
-                        active: _navIndex == 3,
-                        onTap: () => setState(() => _navIndex = 3)),
-                  ],
-                ),
-              ),
-            ],
+                _NavItem(icon: Icons.folder_rounded, label: 'Docs',
+                    active: _navIndex == 2,
+                    onTap: () => setState(() => _navIndex = 2)),
+                _NavItem(icon: Icons.settings_rounded, label: 'Settings',
+                    active: _navIndex == 3,
+                    onTap: () => setState(() => _navIndex = 3)),
+              ],
+            ),
           ),
         ),
       ),
@@ -405,9 +408,9 @@ class _TodayTabState extends State<_TodayTab> {
     // Today-done count
     _cachedTodayDone = widget.allTasks
         .where((t) {
-          final d = _completionDay(t);
-          return d != null && _sameDay(d, today);
-        })
+      final d = _completionDay(t);
+      return d != null && _sameDay(d, today);
+    })
         .length;
 
     // Current streak
@@ -473,8 +476,8 @@ class _TodayTabState extends State<_TodayTab> {
         .where((t) => t.deadline.isBefore(now)).length;
     final urgent  = widget.tasks
         .where((t) =>
-            !t.deadline.isBefore(now) &&
-            t.deadline.difference(now).inHours < 24).length;
+    !t.deadline.isBefore(now) &&
+        t.deadline.difference(now).inHours < 24).length;
     if (overdue > 0) {
       return 'You have $overdue overdue task${overdue > 1 ? "s" : ""}. '
           'Tackle ${overdue > 1 ? "them" : "it"} first to protect your streak.';
@@ -500,7 +503,7 @@ class _TodayTabState extends State<_TodayTab> {
     final upcoming = widget.tasks.where((t) => !t.deadline.isBefore(now)).toList();
     final totalToday     = widget.tasks.length + _cachedTodayDone;
     final tasksRingValue =
-        totalToday > 0 ? _cachedTodayDone / totalToday : 0.0;
+    totalToday > 0 ? _cachedTodayDone / totalToday : 0.0;
     final topPad  = MediaQuery.of(context).padding.top;
 
     return CustomScrollView(slivers: [
@@ -519,8 +522,8 @@ class _TodayTabState extends State<_TodayTab> {
                   Text(
                     DateFormat('EEEE · d MMM').format(now).toUpperCase(),
                     style: GoogleFonts.manrope(
-                      fontSize: 11, fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8, color: AppTheme.subtext(isDark)),
+                        fontSize: 11, fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8, color: AppTheme.subtext(isDark)),
                   ),
                   const SizedBox(height: 4),
                   RichText(
@@ -573,7 +576,7 @@ class _TodayTabState extends State<_TodayTab> {
               widget.tasks.isEmpty
                   ? 'No tasks due today.'
                   : '${widget.tasks.length} task${widget.tasks.length == 1 ? "" : "s"}'
-                    ' for today${_cachedTodayDone > 0 ? ", $_cachedTodayDone done ✓" : "."}',
+                  ' for today${_cachedTodayDone > 0 ? ", $_cachedTodayDone done ✓" : "."}',
               style: GoogleFonts.manrope(
                   fontSize: 14, fontWeight: FontWeight.w500,
                   color: AppTheme.subtext(isDark)),
@@ -606,13 +609,13 @@ class _TodayTabState extends State<_TodayTab> {
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('SMART NUDGE',
                         style: GoogleFonts.manrope(
-                          fontSize: 10, fontWeight: FontWeight.w700,
-                          letterSpacing: 0.6, color: AppTheme.primary)),
+                            fontSize: 10, fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6, color: AppTheme.primary)),
                     const SizedBox(height: 3),
                     Text(_nudgeMessage,
                         style: GoogleFonts.manrope(
-                          fontSize: 13, fontWeight: FontWeight.w600,
-                          color: AppTheme.text(isDark), height: 1.4)),
+                            fontSize: 13, fontWeight: FontWeight.w600,
+                            color: AppTheme.text(isDark), height: 1.4)),
                   ])),
                   const SizedBox(width: 8),
                   SizedBox(
@@ -653,8 +656,8 @@ class _TodayTabState extends State<_TodayTab> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text("Today's Tasks",
                     style: GoogleFonts.manrope(
-                      fontSize: 16, fontWeight: FontWeight.w800,
-                      color: AppTheme.text(isDark))),
+                        fontSize: 16, fontWeight: FontWeight.w800,
+                        color: AppTheme.text(isDark))),
               ),
           ]),
         ),
@@ -682,7 +685,7 @@ class _TodayTabState extends State<_TodayTab> {
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(delegate: SliverChildBuilderDelegate(
-              (_, i) => RepaintBoundary(
+                  (_, i) => RepaintBoundary(
                 child: GestureDetector(
                   onTap: () => widget.onTap(overdue[i]),
                   child: TaskCard(
@@ -701,7 +704,7 @@ class _TodayTabState extends State<_TodayTab> {
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(delegate: SliverChildBuilderDelegate(
-              (_, i) => RepaintBoundary(
+                  (_, i) => RepaintBoundary(
                 child: GestureDetector(
                   onTap: () => widget.onTap(upcoming[i]),
                   child: TaskCard(
@@ -732,8 +735,8 @@ class _TodayTabState extends State<_TodayTab> {
                     const SizedBox(height: 2),
                     Text('28-day activity',
                         style: GoogleFonts.manrope(
-                          fontSize: 14, fontWeight: FontWeight.w800,
-                          color: AppTheme.text(isDark))),
+                            fontSize: 14, fontWeight: FontWeight.w800,
+                            color: AppTheme.text(isDark))),
                   ])),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -743,8 +746,8 @@ class _TodayTabState extends State<_TodayTab> {
                     ),
                     child: Text('28 days',
                         style: GoogleFonts.manrope(
-                          fontSize: 10, fontWeight: FontWeight.w700,
-                          color: AppTheme.primary)),
+                            fontSize: 10, fontWeight: FontWeight.w700,
+                            color: AppTheme.primary)),
                   ),
                 ]),
                 const SizedBox(height: 10),
@@ -762,9 +765,9 @@ class _TodayTabState extends State<_TodayTab> {
                     final Color cellColor = isToday
                         ? AppTheme.primary
                         : heat == 0
-                            ? AppTheme.surfaceLow(isDark)
-                            : AppTheme.primary.withValues(
-                                alpha: (0.2 + heat * 0.16).clamp(0.2, 1.0));
+                        ? AppTheme.surfaceLow(isDark)
+                        : AppTheme.primary.withValues(
+                        alpha: (0.2 + heat * 0.16).clamp(0.2, 1.0));
                     return Tooltip(
                       message: '${e.key.day}/${e.key.month}: $heat task${heat == 1 ? "" : "s"}',
                       child: AnimatedContainer(
@@ -815,8 +818,8 @@ class _TodayTabState extends State<_TodayTab> {
                     const SizedBox(height: 2),
                     Text("Today's progress",
                         style: GoogleFonts.manrope(
-                          fontSize: 15, fontWeight: FontWeight.w800,
-                          color: AppTheme.text(isDark))),
+                            fontSize: 15, fontWeight: FontWeight.w800,
+                            color: AppTheme.text(isDark))),
                   ]),
                   const Text('⚡', style: TextStyle(fontSize: 22)),
                 ]),
@@ -872,8 +875,8 @@ class _RingItem extends StatelessWidget {
       gradient: gradient,
       center: Text(percent,
           style: GoogleFonts.manrope(
-            fontSize: 15, fontWeight: FontWeight.w800,
-            color: gradient.first)),
+              fontSize: 15, fontWeight: FontWeight.w800,
+              color: gradient.first)),
     ),
     const SizedBox(height: 6),
     Text(label, style: GoogleFonts.manrope(
@@ -912,7 +915,7 @@ class _StreakSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: () => Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ProfileScreen())),
+        MaterialPageRoute(builder: (_) => const ProfileScreen())),
     child: NudgeCard(
       padding: const EdgeInsets.all(18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -921,8 +924,8 @@ class _StreakSummaryCard extends StatelessWidget {
           children: [
             Text('Streak Progress',
                 style: GoogleFonts.manrope(
-                  fontSize: 15, fontWeight: FontWeight.w800,
-                  color: AppTheme.text(isDark))),
+                    fontSize: 15, fontWeight: FontWeight.w800,
+                    color: AppTheme.text(isDark))),
             Row(children: [
               Text('Tap to view',
                   style: GoogleFonts.manrope(
@@ -960,8 +963,8 @@ class _StreakSummaryCard extends StatelessWidget {
         const SizedBox(height: 8),
         Text(_milestoneLabel,
             style: GoogleFonts.manrope(
-              fontSize: 11, fontWeight: FontWeight.w700,
-              color: AppTheme.primary)),
+                fontSize: 11, fontWeight: FontWeight.w700,
+                color: AppTheme.primary)),
       ]),
     ),
   );
@@ -971,7 +974,7 @@ class _StatMini extends StatelessWidget {
   final String value, label;
   final Color bg, fg;
   const _StatMini({required this.value, required this.label,
-      required this.bg, required this.fg});
+    required this.bg, required this.fg});
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(10),
@@ -982,9 +985,9 @@ class _StatMini extends StatelessWidget {
           fontSize: 20, fontWeight: FontWeight.w800, color: fg)),
       Text(label.toUpperCase(),
           style: GoogleFonts.manrope(
-            fontSize: 8, fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-            color: fg.withValues(alpha: 0.75))),
+              fontSize: 8, fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: fg.withValues(alpha: 0.75))),
     ]),
   );
 }
@@ -999,8 +1002,8 @@ class _AllTab extends StatefulWidget {
   final Future<void> Function(List<Task>) onBulkDelete;
   final bool isDark;
   const _AllTab({required this.tasks, required this.onToggle,
-      required this.onDelete, required this.onTap,
-      required this.onBulkDelete, required this.isDark});
+    required this.onDelete, required this.onTap,
+    required this.onBulkDelete, required this.isDark});
   @override
   State<_AllTab> createState() => _AllTabState();
 }
@@ -1076,7 +1079,7 @@ class _AllTabState extends State<_AllTab> {
     if (_search.isEmpty) return base;
     final q = _search.toLowerCase();
     return base.where((t) =>
-        t.name.toLowerCase().contains(q) ||
+    t.name.toLowerCase().contains(q) ||
         t.subject.toLowerCase().contains(q) ||
         t.taskType.toLowerCase().contains(q)).toList();
   }
@@ -1091,165 +1094,165 @@ class _AllTabState extends State<_AllTab> {
     final topPad  = MediaQuery.of(context).padding.top;
 
     return Stack(
-      children: [
-      CustomScrollView(slivers: [
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, topPad + 24, 16, 0),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-            Row(children: [
-              Expanded(child: NudgeSectionHeader(
-                  overline: _isSelecting
-                      ? '${_selectedIds.length} selected'
-                      : 'Task manager',
-                  title: _isSelecting ? 'Select tasks' : 'My Tasks')),
-              GestureDetector(
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => CalendarScreen(
-                    tasks: widget.tasks,
-                    onToggle: widget.onToggle,
-                    onDelete: widget.onDelete,
-                    onTap: widget.onTap,
-                  ),
+        children: [
+          CustomScrollView(slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, topPad + 24, 16, 0),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Expanded(child: NudgeSectionHeader(
+                            overline: _isSelecting
+                                ? '${_selectedIds.length} selected'
+                                : 'Task manager',
+                            title: _isSelecting ? 'Select tasks' : 'My Tasks')),
+                        GestureDetector(
+                          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => CalendarScreen(
+                              tasks: widget.tasks,
+                              onToggle: widget.onToggle,
+                              onDelete: widget.onDelete,
+                              onTap: widget.onTap,
+                            ),
+                          )),
+                          child: Container(
+                            width: 40, height: 40,
+                            decoration: BoxDecoration(
+                              color: AppTheme.surfaceLow(isDark),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(Icons.calendar_month_rounded,
+                                size: 20, color: AppTheme.primary),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 16),
+                      NudgeSearchBar(
+                        controller: _searchCtrl,
+                        hint: 'Search tasks, subjects, types…',
+                        onChanged: (v) => setState(() => _search = v),
+                        onClear: () {
+                          _searchCtrl.clear();
+                          setState(() => _search = '');
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      // Stat cards
+                      Row(children: [
+                        Expanded(child: NudgeStatCard(
+                          icon: Icons.pending_actions_rounded,
+                          value: pending.toString(),
+                          label: 'Pending',
+                          gradient: [AppTheme.primaryContainer, AppTheme.primary],
+                        )),
+                        const SizedBox(width: 10),
+                        Expanded(child: NudgeStatCard(
+                          icon: Icons.bolt_rounded,
+                          value: urgent.toString(),
+                          label: 'Urgent',
+                          gradient: [AppTheme.secondaryContainer, AppTheme.secondary],
+                        )),
+                        const SizedBox(width: 10),
+                        Expanded(child: NudgeStatCard(
+                          icon: Icons.task_alt_rounded,
+                          value: done.toString(),
+                          label: 'Done',
+                          gradient: [
+                            const Color(0xFFB8F7DE),
+                            const Color(0xFF34D399),
+                          ],
+                        )),
+                      ]),
+                      const SizedBox(height: 16),
+                      // Filter chips
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          NudgeFilterChip(label: 'All',
+                              selected: _filter == 0,
+                              onTap: () => setState(() => _filter = 0)),
+                          const SizedBox(width: 8),
+                          NudgeFilterChip(label: 'Pending',
+                              selected: _filter == 1,
+                              onTap: () => setState(() => _filter = 1)),
+                          const SizedBox(width: 8),
+                          NudgeFilterChip(label: 'Urgent',
+                              selected: _filter == 2,
+                              onTap: () => setState(() => _filter = 2)),
+                          const SizedBox(width: 8),
+                          NudgeFilterChip(label: 'Done',
+                              selected: _filter == 3,
+                              onTap: () => setState(() => _filter = 3)),
+                        ]),
+                      ),
+                      const SizedBox(height: 8),
+                    ]),
+              ),
+            ),
+            if (_visible.isEmpty)
+              SliverFillRemaining(
+                child: _EmptyState(
+                  icon: Icons.task_alt_rounded,
+                  title: _search.isNotEmpty ? 'No results' : 'No tasks here',
+                  subtitle: _search.isNotEmpty
+                      ? 'Try a different search.'
+                      : 'Add your first task below.',
+                  isDark: isDark,
+                ),
+              )
+            else ...[
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                sliver: SliverList(delegate: SliverChildBuilderDelegate(
+                      (_, i) {
+                    final task = _visible[i];
+                    final id   = task.id;
+                    return RepaintBoundary(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_isSelecting && id != null) {
+                            _toggleSelect(id);
+                          } else {
+                            widget.onTap(task);
+                          }
+                        },
+                        onLongPress: () {
+                          if (id == null) return;
+                          HapticFeedback.selectionClick();
+                          _toggleSelect(id);
+                        },
+                        child: TaskCard(
+                            task: task,
+                            isSelected: _selectedIds.contains(id),
+                            onToggleDone: () => widget.onToggle(task),
+                            onDelete: () => widget.onDelete(task)),
+                      ),
+                    );
+                  },
+                  childCount: _visible.length,
                 )),
-                child: Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceLow(isDark),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(Icons.calendar_month_rounded,
-                      size: 20, color: AppTheme.primary),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: _NudgeInsightCard(tasks: widget.tasks, isDark: isDark),
                 ),
               ),
-            ]),
-            const SizedBox(height: 16),
-            NudgeSearchBar(
-              controller: _searchCtrl,
-              hint: 'Search tasks, subjects, types…',
-              onChanged: (v) => setState(() => _search = v),
-              onClear: () {
-                _searchCtrl.clear();
-                setState(() => _search = '');
-              },
+              const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            ],
+          ]),  // end CustomScrollView
+          // Bulk action bar — floats above the bottom nav when tasks are selected
+          if (_isSelecting)
+            Positioned(
+              left: 16, right: 16, bottom: 80,
+              child: _BulkActionBar(
+                count: _selectedIds.length,
+                onDelete: () => _doBulkDelete(context),
+                onCancel: () => setState(() => _selectedIds.clear()),
+              ),
             ),
-            const SizedBox(height: 20),
-            // Stat cards
-            Row(children: [
-              Expanded(child: NudgeStatCard(
-                icon: Icons.pending_actions_rounded,
-                value: pending.toString(),
-                label: 'Pending',
-                gradient: [AppTheme.primaryContainer, AppTheme.primary],
-              )),
-              const SizedBox(width: 10),
-              Expanded(child: NudgeStatCard(
-                icon: Icons.bolt_rounded,
-                value: urgent.toString(),
-                label: 'Urgent',
-                gradient: [AppTheme.secondaryContainer, AppTheme.secondary],
-              )),
-              const SizedBox(width: 10),
-              Expanded(child: NudgeStatCard(
-                icon: Icons.task_alt_rounded,
-                value: done.toString(),
-                label: 'Done',
-                gradient: [
-                  const Color(0xFFB8F7DE),
-                  const Color(0xFF34D399),
-                ],
-              )),
-            ]),
-            const SizedBox(height: 16),
-            // Filter chips
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(children: [
-                NudgeFilterChip(label: 'All',
-                    selected: _filter == 0,
-                    onTap: () => setState(() => _filter = 0)),
-                const SizedBox(width: 8),
-                NudgeFilterChip(label: 'Pending',
-                    selected: _filter == 1,
-                    onTap: () => setState(() => _filter = 1)),
-                const SizedBox(width: 8),
-                NudgeFilterChip(label: 'Urgent',
-                    selected: _filter == 2,
-                    onTap: () => setState(() => _filter = 2)),
-                const SizedBox(width: 8),
-                NudgeFilterChip(label: 'Done',
-                    selected: _filter == 3,
-                    onTap: () => setState(() => _filter = 3)),
-              ]),
-            ),
-            const SizedBox(height: 8),
-          ]),
-        ),
-      ),
-      if (_visible.isEmpty)
-        SliverFillRemaining(
-          child: _EmptyState(
-            icon: Icons.task_alt_rounded,
-            title: _search.isNotEmpty ? 'No results' : 'No tasks here',
-            subtitle: _search.isNotEmpty
-                ? 'Try a different search.'
-                : 'Add your first task below.',
-            isDark: isDark,
-          ),
-        )
-      else ...[
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          sliver: SliverList(delegate: SliverChildBuilderDelegate(
-            (_, i) {
-              final task = _visible[i];
-              final id   = task.id;
-              return RepaintBoundary(
-                child: GestureDetector(
-                  onTap: () {
-                    if (_isSelecting && id != null) {
-                      _toggleSelect(id);
-                    } else {
-                      widget.onTap(task);
-                    }
-                  },
-                  onLongPress: () {
-                    if (id == null) return;
-                    HapticFeedback.selectionClick();
-                    _toggleSelect(id);
-                  },
-                  child: TaskCard(
-                      task: task,
-                      isSelected: _selectedIds.contains(id),
-                      onToggleDone: () => widget.onToggle(task),
-                      onDelete: () => widget.onDelete(task)),
-                ),
-              );
-            },
-            childCount: _visible.length,
-          )),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: _NudgeInsightCard(tasks: widget.tasks, isDark: isDark),
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 100)),
-      ],
-    ]),  // end CustomScrollView
-    // Bulk action bar — floats above the bottom nav when tasks are selected
-    if (_isSelecting)
-      Positioned(
-        left: 16, right: 16, bottom: 80,
-        child: _BulkActionBar(
-          count: _selectedIds.length,
-          onDelete: () => _doBulkDelete(context),
-          onCancel: () => setState(() => _selectedIds.clear()),
-        ),
-      ),
-    ]);  // end Stack
+        ]);  // end Stack
   }
 }
 
@@ -1290,7 +1293,7 @@ class _DocsTabState extends State<_DocsTab> {
         result[e.key] = e.value;
       } else {
         final match = e.value.where((d) =>
-            d.note.toLowerCase().contains(q) ||
+        d.note.toLowerCase().contains(q) ||
             d.subject.toLowerCase().contains(q)).toList();
         if (match.isNotEmpty) result[e.key] = match;
       }
@@ -1443,8 +1446,8 @@ class _DocCardTile extends StatelessWidget {
       },
       borderRadius: isLast
           ? const BorderRadius.only(
-              bottomLeft: Radius.circular(16),
-              bottomRight: Radius.circular(16))
+          bottomLeft: Radius.circular(16),
+          bottomRight: Radius.circular(16))
           : BorderRadius.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1461,14 +1464,14 @@ class _DocCardTile extends StatelessWidget {
           Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-            Text(doc.note.isNotEmpty ? doc.note : 'Document',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                    color: AppTheme.text(isDark)),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-            Text(doc.isPdf ? 'PDF · tap to open' : 'Image · tap to open',
-                style: TextStyle(
-                    fontSize: 11, color: AppTheme.subtext(isDark))),
-          ])),
+                Text(doc.note.isNotEmpty ? doc.note : 'Document',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                        color: AppTheme.text(isDark)),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(doc.isPdf ? 'PDF · tap to open' : 'Image · tap to open',
+                    style: TextStyle(
+                        fontSize: 11, color: AppTheme.subtext(isDark))),
+              ])),
           Icon(Icons.open_in_new_rounded,
               color: AppTheme.subtext(isDark), size: 16),
         ]),
@@ -1585,16 +1588,16 @@ class _SettingsTabState extends State<_SettingsTab> {
                 Expanded(child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Text(
-                      widget.userName.isEmpty ? 'Student' : widget.userName,
-                      style: GoogleFonts.manrope(
-                        fontSize: 16, fontWeight: FontWeight.w800,
-                        color: Colors.white)),
-                  Text('View profile, streaks & XP',
-                      style: GoogleFonts.manrope(
-                        fontSize: 12, fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.8))),
-                ])),
+                      Text(
+                          widget.userName.isEmpty ? 'Student' : widget.userName,
+                          style: GoogleFonts.manrope(
+                              fontSize: 16, fontWeight: FontWeight.w800,
+                              color: Colors.white)),
+                      Text('View profile, streaks & XP',
+                          style: GoogleFonts.manrope(
+                              fontSize: 12, fontWeight: FontWeight.w500,
+                              color: Colors.white.withValues(alpha: 0.8))),
+                    ])),
                 Icon(Icons.chevron_right_rounded,
                     color: Colors.white.withValues(alpha: 0.8), size: 22),
               ]),
@@ -1613,7 +1616,7 @@ class _SettingsTabState extends State<_SettingsTab> {
                   value: mode == ThemeMode.dark,
                   onChanged: (v) {
                     themeNotifier.value =
-                        v ? ThemeMode.dark : ThemeMode.light;
+                    v ? ThemeMode.dark : ThemeMode.light;
                   },
                 ),
               ),
@@ -1737,12 +1740,12 @@ class _SettingsRow extends StatelessWidget {
         Expanded(child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-          Text(title, style: TextStyle(fontSize: 14,
-              fontWeight: FontWeight.w600, color: AppTheme.text(isDark))),
-          if (subtitle != null)
-            Text(subtitle!, style: TextStyle(
-                fontSize: 12, color: AppTheme.subtext(isDark))),
-        ])),
+              Text(title, style: TextStyle(fontSize: 14,
+                  fontWeight: FontWeight.w600, color: AppTheme.text(isDark))),
+              if (subtitle != null)
+                Text(subtitle!, style: TextStyle(
+                    fontSize: 12, color: AppTheme.subtext(isDark))),
+            ])),
         if (trailing != null) trailing!,
       ]),
     ),
@@ -1847,107 +1850,107 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Row(children: [
-                    if (task.priority == 'urgent' && !task.isDone)
-                      _Badge(
-                          label: 'URGENT',
-                          bg: AppTheme.alert.withValues(alpha: 0.12),
-                          fg: AppTheme.alert),
-                    if (task.isDone)
-                      _Badge(
-                          label: 'DONE',
-                          bg: AppTheme.calm.withValues(alpha: 0.12),
-                          fg: AppTheme.calm),
-                    const Spacer(),
-                    Icon(AppTheme.taskTypeIcon(task.taskType),
-                        size: 18, color: subjectColor),
-                  ]),
-                  const SizedBox(height: 12),
-                  Text(task.name,
-                      style: TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.w800,
-                        letterSpacing: -0.4,
-                        color: task.isDone
-                            ? AppTheme.subtext(isDark) : AppTheme.text(isDark),
-                        decoration:
+                      Row(children: [
+                        if (task.priority == 'urgent' && !task.isDone)
+                          _Badge(
+                              label: 'URGENT',
+                              bg: AppTheme.alert.withValues(alpha: 0.12),
+                              fg: AppTheme.alert),
+                        if (task.isDone)
+                          _Badge(
+                              label: 'DONE',
+                              bg: AppTheme.calm.withValues(alpha: 0.12),
+                              fg: AppTheme.calm),
+                        const Spacer(),
+                        Icon(AppTheme.taskTypeIcon(task.taskType),
+                            size: 18, color: subjectColor),
+                      ]),
+                      const SizedBox(height: 12),
+                      Text(task.name,
+                          style: TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.w800,
+                            letterSpacing: -0.4,
+                            color: task.isDone
+                                ? AppTheme.subtext(isDark) : AppTheme.text(isDark),
+                            decoration:
                             task.isDone ? TextDecoration.lineThrough : null,
-                      )),
-                  const SizedBox(height: 16),
-                  if (task.subject.isNotEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: subjectColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(task.subject,
-                          style: TextStyle(fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: subjectColor)),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-                  _DetailRow(
-                      icon: Icons.calendar_today_rounded,
-                      iconColor: urgColor,
-                      label: 'Deadline',
-                      value: DateFormat('EEEE, d MMMM yyyy · h:mm a')
-                          .format(task.deadline),
-                      valueColor: AppTheme.text(isDark)),
-                  const SizedBox(height: 10),
-                  _DetailRow(
-                      icon: Icons.timer_outlined,
-                      iconColor: urgColor,
-                      label: 'Status',
-                      value: _timeLabel,
-                      valueColor: urgColor),
-                  const SizedBox(height: 10),
-                  _DetailRow(
-                      icon: AppTheme.taskTypeIcon(task.taskType),
-                      iconColor: AppTheme.subtext(isDark),
-                      label: 'Type',
-                      value: task.taskType[0].toUpperCase() +
-                          task.taskType.substring(1),
-                      valueColor: AppTheme.text(isDark)),
-                  if (task.description.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    _DetailRow(
-                        icon: Icons.notes_rounded,
-                        iconColor: AppTheme.subtext(isDark),
-                        label: 'Notes',
-                        value: task.description,
-                        valueColor: AppTheme.text(isDark)),
-                  ],
-                  if (task.referenceLinks.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    ...task.referenceLinks.asMap().entries.map((entry) {
-                      final url = entry.value;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: InkWell(
-                          onTap: () async {
-                            final uri = Uri.tryParse(url);
-                            if (uri != null) {
-                              await launchUrl(uri,
-                                  mode: LaunchMode.externalApplication);
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(6),
-                          child: _DetailRow(
-                            icon: Icons.link_rounded,
-                            iconColor: AppTheme.primary,
-                            label: task.referenceLinks.length > 1
-                                ? 'Link ${entry.key + 1}'
-                                : 'Link',
-                            value: url,
-                            valueColor: AppTheme.primary,
+                          )),
+                      const SizedBox(height: 16),
+                      if (task.subject.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: subjectColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
                           ),
+                          child: Text(task.subject,
+                              style: TextStyle(fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: subjectColor)),
                         ),
-                      );
-                    }),
-                  ],
-                ]),
+                        const SizedBox(height: 14),
+                      ],
+                      _DetailRow(
+                          icon: Icons.calendar_today_rounded,
+                          iconColor: urgColor,
+                          label: 'Deadline',
+                          value: DateFormat('EEEE, d MMMM yyyy · h:mm a')
+                              .format(task.deadline),
+                          valueColor: AppTheme.text(isDark)),
+                      const SizedBox(height: 10),
+                      _DetailRow(
+                          icon: Icons.timer_outlined,
+                          iconColor: urgColor,
+                          label: 'Status',
+                          value: _timeLabel,
+                          valueColor: urgColor),
+                      const SizedBox(height: 10),
+                      _DetailRow(
+                          icon: AppTheme.taskTypeIcon(task.taskType),
+                          iconColor: AppTheme.subtext(isDark),
+                          label: 'Type',
+                          value: task.taskType[0].toUpperCase() +
+                              task.taskType.substring(1),
+                          valueColor: AppTheme.text(isDark)),
+                      if (task.description.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        _DetailRow(
+                            icon: Icons.notes_rounded,
+                            iconColor: AppTheme.subtext(isDark),
+                            label: 'Notes',
+                            value: task.description,
+                            valueColor: AppTheme.text(isDark)),
+                      ],
+                      if (task.referenceLinks.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        ...task.referenceLinks.asMap().entries.map((entry) {
+                          final url = entry.value;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: InkWell(
+                              onTap: () async {
+                                final uri = Uri.tryParse(url);
+                                if (uri != null) {
+                                  await launchUrl(uri,
+                                      mode: LaunchMode.externalApplication);
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: _DetailRow(
+                                icon: Icons.link_rounded,
+                                iconColor: AppTheme.primary,
+                                label: task.referenceLinks.length > 1
+                                    ? 'Link ${entry.key + 1}'
+                                    : 'Link',
+                                value: url,
+                                valueColor: AppTheme.primary,
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ]),
               ),
               Positioned(
                 left: 0, top: 0, bottom: 0,
@@ -1992,7 +1995,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               label: Text(task.isDone ? 'Mark as pending' : 'Mark as done'),
               style: ElevatedButton.styleFrom(
                 backgroundColor:
-                    task.isDone ? AppTheme.subtext(isDark) : AppTheme.calm,
+                task.isDone ? AppTheme.subtext(isDark) : AppTheme.calm,
               ),
             ),
           ),
@@ -2072,7 +2075,7 @@ class _ProfileAvatar extends StatelessWidget {
     final hasImage = imagePath != null && imagePath!.isNotEmpty;
     final initials = name.isNotEmpty
         ? name.trim().split(RegExp(r'\s+')).take(2)
-              .map((w) => w[0].toUpperCase()).join()
+        .map((w) => w[0].toUpperCase()).join()
         : '?';
     final bgColor = onGradient
         ? Colors.white.withValues(alpha: 0.25)
@@ -2089,8 +2092,8 @@ class _ProfileAvatar extends StatelessWidget {
         border: Border.all(color: borderColor, width: 1.5),
         image: hasImage
             ? DecorationImage(
-                image: FileImage(import_dart_io.File(imagePath!)),
-                fit: BoxFit.cover)
+            image: FileImage(import_dart_io.File(imagePath!)),
+            fit: BoxFit.cover)
             : null,
       ),
       child: hasImage ? null : Center(
@@ -2139,7 +2142,7 @@ class _DetailRow extends StatelessWidget {
   final Color iconColor, valueColor;
   final String label, value;
   const _DetailRow({required this.icon, required this.iconColor,
-      required this.label, required this.value, required this.valueColor});
+    required this.label, required this.value, required this.valueColor});
   @override
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2149,13 +2152,13 @@ class _DetailRow extends StatelessWidget {
       Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-        Text(label, style: const TextStyle(
-            fontSize: 11, color: Color(0xFFAAAAB5),
-            fontWeight: FontWeight.w500)),
-        const SizedBox(height: 2),
-        Text(value, style: TextStyle(
-            fontSize: 14, fontWeight: FontWeight.w600, color: valueColor)),
-      ])),
+            Text(label, style: const TextStyle(
+                fontSize: 11, color: Color(0xFFAAAAB5),
+                fontWeight: FontWeight.w500)),
+            const SizedBox(height: 2),
+            Text(value, style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w600, color: valueColor)),
+          ])),
     ],
   );
 }
@@ -2185,7 +2188,7 @@ class _LinkedDocCard extends StatelessWidget {
         ),
         child: ListTile(
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           leading: Container(
             width: 44, height: 44,
             decoration: BoxDecoration(
@@ -2221,8 +2224,8 @@ class _EmptyState extends StatelessWidget {
   final VoidCallback? onAction;
   final bool isDark;
   const _EmptyState({required this.icon, required this.title,
-      required this.subtitle, required this.isDark,
-      this.actionLabel, this.onAction});
+    required this.subtitle, required this.isDark,
+    this.actionLabel, this.onAction});
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
@@ -2263,11 +2266,11 @@ class _NudgeInsightCard extends StatelessWidget {
   String get _headline {
     final now = DateTime.now();
     final urgentSoon = tasks.where((t) =>
-        !t.isDone &&
+    !t.isDone &&
         !t.deadline.isBefore(now) &&
         t.deadline.difference(now).inHours < 24).length;
     final overdue = tasks.where((t) =>
-        !t.isDone && t.deadline.isBefore(now)).length;
+    !t.isDone && t.deadline.isBefore(now)).length;
     if (overdue > 0) {
       return '$overdue overdue task${overdue == 1 ? "" : "s"} — tackle ${overdue == 1 ? "it" : "them"} first to protect your streak.';
     }
@@ -2312,14 +2315,14 @@ class _NudgeInsightCard extends StatelessWidget {
         Expanded(
           child: Text(_headline,
               style: GoogleFonts.manrope(
-                fontSize: 13, fontWeight: FontWeight.w700,
-                color: AppTheme.primary)),
+                  fontSize: 13, fontWeight: FontWeight.w700,
+                  color: AppTheme.primary)),
         ),
       ]),
       const SizedBox(height: 8),
       Text(_tip,
           style: GoogleFonts.manrope(
-            fontSize: 12, color: AppTheme.subtext(isDark))),
+              fontSize: 12, color: AppTheme.subtext(isDark))),
     ]),
   );
 }
@@ -2372,15 +2375,15 @@ class _CelebrationSheet extends StatelessWidget {
       const SizedBox(height: 16),
       Text('Task crushed!',
           style: GoogleFonts.manrope(
-            fontSize: 22, fontWeight: FontWeight.w800,
-            color: AppTheme.text(isDark))),
+              fontSize: 22, fontWeight: FontWeight.w800,
+              color: AppTheme.text(isDark))),
       const SizedBox(height: 6),
       Text(taskName,
           textAlign: TextAlign.center,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: GoogleFonts.manrope(
-            fontSize: 14, color: AppTheme.subtext(isDark))),
+              fontSize: 14, color: AppTheme.subtext(isDark))),
       const SizedBox(height: 16),
       // XP + streak pills
       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -2392,8 +2395,8 @@ class _CelebrationSheet extends StatelessWidget {
           ),
           child: Text('+10 XP  ·  $xp total',
               style: GoogleFonts.manrope(
-                fontSize: 13, fontWeight: FontWeight.w800,
-                color: AppTheme.primary)),
+                  fontSize: 13, fontWeight: FontWeight.w800,
+                  color: AppTheme.primary)),
         ),
         const SizedBox(width: 8),
         Container(
@@ -2404,8 +2407,8 @@ class _CelebrationSheet extends StatelessWidget {
           ),
           child: Text(streak > 0 ? '🔥 $streak day streak' : '🚀 Start streak',
               style: GoogleFonts.manrope(
-                fontSize: 13, fontWeight: FontWeight.w800,
-                color: AppTheme.calm)),
+                  fontSize: 13, fontWeight: FontWeight.w800,
+                  color: AppTheme.calm)),
         ),
       ]),
       const SizedBox(height: 24),
@@ -2422,7 +2425,7 @@ class _CelebrationSheet extends StatelessWidget {
           ),
           child: Text('Keep going!',
               style: GoogleFonts.manrope(
-                fontSize: 15, fontWeight: FontWeight.w800)),
+                  fontSize: 15, fontWeight: FontWeight.w800)),
         ),
       ),
     ]),

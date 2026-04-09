@@ -127,8 +127,8 @@ class TaskParser {
 
     final rawParts = raw
         .split(RegExp(
-            r'\s*,\s*|\n+|\s*;\s*|\s+aur\s+|\s+and\s+|\s+ani\s+|\.\s+|\s*\|\s*',
-            caseSensitive: false))
+        r'\s*,\s*|\n+|\s*;\s*|\s+aur\s+|\s+and\s+|\s+ani\s+|\.\s+|\s*\|\s*',
+        caseSensitive: false))
         .map((p) => p.trim())
         .where((p) => p.length > 5)
         .toList();
@@ -145,6 +145,14 @@ class TaskParser {
       } else {
         parts[parts.length - 1] = '${parts.last} $p';
       }
+    }
+
+    // [F9] If the very first fragment is a date-less header (e.g. "*AIML*",
+    // "Chemistry:"), coalesce it forward into the first dated part so it
+    // doesn't inflate the task count by one.
+    if (parts.length >= 2 && !hasSignal(parts.first)) {
+      parts[1] = '${parts.first} ${parts[1]}';
+      parts.removeAt(0);
     }
 
     // Each part must contain at least one deadline signal to be a real subtask.
@@ -220,7 +228,7 @@ class TaskParser {
   //      counts them as signals; the actual deadline branch for compound-kal
   //      variants is handled FIRST in _detectDeadline before the plain loop.
   static const _tomorrow = [
-    'kal subah', 'kal raat', 'kal sham', 'kal tak',
+    'kal subah', 'kal subhe', 'kal subhey', 'kal raat', 'kal sham', 'kal tak',
     'tomorrow', 'tmrw', 'tmr',
     'kal', 'kl', 'udya', 'udhya', 'next day', 'agle din',
     // [F3] additions
@@ -394,9 +402,15 @@ class TaskParser {
     r'(?:before|by|tak|pehle|paryant)\s+(\d{1,2})(?:[:.]\s*(\d{2}))?\s*(am|pm)?\b',
     caseSensitive: false,
   );
+  // [F10] "at N" / "at N:MM" — e.g. "gym at 7", "meeting at 10:30"
+  static final _reAt = RegExp(
+    r'\bat\s+(\d{1,2})(?:[:]( \d{2}))?\b',
+    caseSensitive: false,
+  );
 
   // Context words — used by AM/PM heuristic [F2]
-  static final _reSubah   = RegExp(r'\b(subah|sakaal|sakal|morning)\b',    caseSensitive: false);
+  // [F10] subhe / subhey / sawere / savere added as morning variants
+  static final _reSubah   = RegExp(r'\b(subah|subhe|subhey|sawere|savere|sakaal|sakal|morning)\b', caseSensitive: false);
   static final _reAM      = RegExp(r'\b(am|a\.m\.?)\b',                    caseSensitive: false);
   static final _reShaam   = RegExp(r'\b(shaam|sandhya|evening)\b',         caseSensitive: false);
   static final _reRaat    = RegExp(r'\b(raat|raatri|night)\b',             caseSensitive: false);
@@ -534,8 +548,19 @@ class TaskParser {
         'm': int.parse(m24.group(2)!), 'found': true};
     }
 
+    // [F10] "at N" / "at N:MM" — apply India heuristic,
+    // but morning context (subhe etc.) keeps small hours as AM.
+    final atm = _reAt.firstMatch(text);
+    if (atm != null) {
+      int h = int.parse(atm.group(1)!);
+      final mn = int.tryParse((atm.group(2) ?? '').trim().isEmpty
+          ? '0' : atm.group(2)!.trim()) ?? 0;
+      h = _indiaAmbiguousHour(h, text);
+      return {'h': h, 'm': mn, 'found': true};
+    }
+
     // Context words only
-    if (_reSubah.hasMatch(text))   return {'h': 9,  'm': 0, 'found': true};
+    if (_reSubah.hasMatch(text))   return {'h': 7,  'm': 0, 'found': true};
     if (_reDopahar.hasMatch(text)) return {'h': 12, 'm': 0, 'found': true};
     if (_reShaam.hasMatch(text))   return {'h': 18, 'm': 0, 'found': true};
     if (_reRaat.hasMatch(text))    return {'h': 22, 'm': 0, 'found': true};
@@ -601,10 +626,11 @@ class TaskParser {
     }
 
     // ── [F1] Compound kal phrases BEFORE plain "kal" ─────────────
-    if (_has(text, 'kal subah')) {
+    // [F10] kal subhe / kal subhey treated same as kal subah
+    if (_has(text, 'kal subah') || _has(text, 'kal subhe') || _has(text, 'kal subhey')) {
       final d = now.add(const Duration(days: 1));
       return {
-        'deadline': DateTime(d.year, d.month, d.day, tf ? h : 9, tf ? m : 0),
+        'deadline': DateTime(d.year, d.month, d.day, tf ? h : 7, tf ? m : 0),
         'label': 'Tomorrow morning',
       };
     }
