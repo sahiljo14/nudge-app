@@ -10,6 +10,7 @@ class UserPrefs {
   static const _keyUserName         = 'user_name';
   static const _keyUserSubjects     = 'user_subjects';
   static const _keyProfileImagePath = 'profile_image_path';
+  static const _keyTotalXp          = 'total_xp';
 
   // ── Onboarding gate ───────────────────────────────────────────────────────
 
@@ -77,5 +78,18 @@ class UserPrefs {
     } else {
       await p.setString(_keyUserSubjects, jsonEncode(subjects));
     }
+  }
+
+  // ── XP (permanent, never decreases) ──────────────────────────────────────
+
+  static Future<int> getTotalXp() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getInt(_keyTotalXp) ?? 0;
+  }
+
+  static Future<void> incrementTotalXp(int amount) async {
+    final p = await SharedPreferences.getInstance();
+    final current = p.getInt(_keyTotalXp) ?? 0;
+    await p.setInt(_keyTotalXp, current + amount);
   }
 }

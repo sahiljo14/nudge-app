@@ -2,6 +2,7 @@
 
 import 'dart:ui' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz;
 import '../models/task.dart';
@@ -17,7 +18,8 @@ class NotificationService {
     if (_ready) return;
     tz.initializeTimeZones();
     try {
-      tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
+      final tzName = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(tzName));
     } catch (_) {
       tz.setLocalLocation(tz.UTC);
     }

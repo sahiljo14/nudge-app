@@ -1,7 +1,9 @@
 // lib/screens/home_screen.dart
 
 import 'dart:io' as import_dart_io;
+import 'dart:ui';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -32,39 +34,73 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
+  late final PageController _pageController;
   List<Task> _todayTasks = [];
   List<Task> _allTasks   = [];
   Map<String, List<NudgeDocument>> _docsBySubject = {};
+  List<NudgeDocument> _allDocs = [];
   bool _loading = true;
   String _userName = '';
   String? _profileImagePath;
+  int _totalXp = 0;
+  int _cachedStreak = 0;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _navIndex);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    await DBHelper.instance.deleteExpiredCompletedTasks();
     final userName         = await UserPrefs.getUserName();
     final profileImagePath = await UserPrefs.getProfileImagePath();
-    final all  = await DBHelper.instance.getAllTasks();
-    final subs = await DBHelper.instance.getSubjects();
-    final docsMap = <String, List<NudgeDocument>>{};
-    for (final s in subs) {
-      docsMap[s] = await DBHelper.instance.getDocumentsBySubject(s);
-    }
-    final allDocs = await DBHelper.instance.getAllDocuments();
-    final noSub   = allDocs.where((d) => d.subject.isEmpty).toList();
-    if (noSub.isNotEmpty) docsMap['Uncategorised'] = noSub;
+    final totalXp          = await UserPrefs.getTotalXp();
+    final all     = await DBHelper.instance.getAllTasks();
+    final docsMap = await DBHelper.instance.getAllDocumentsGrouped();
     final now = DateTime.now();
     final today = all.where((t) {
       if (t.isDone) return false;
       return t.deadline.isBefore(DateTime(now.year, now.month, now.day + 1));
     }).toList();
+    // Compute streak once here so _showCelebration can read it without re-looping.
+    bool _sameDay(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
+    DateTime? _completionDay(Task t) {
+      if (!t.isDone) return null;
+      final dt = t.completedAt ?? t.deadline;
+      return DateTime(dt.year, dt.month, dt.day);
+    }
+    final streakNow = DateTime.now();
+    final streakToday = DateTime(streakNow.year, streakNow.month, streakNow.day);
+    int computedStreak = 0;
+    if (all.any((t) { final d = _completionDay(t); return d != null && _sameDay(d, streakToday); })) computedStreak++;
+    for (int i = 1; i < 365; i++) {
+      final day = streakToday.subtract(Duration(days: i));
+      if (all.any((t) { final d = _completionDay(t); return d != null && _sameDay(d, day); })) {
+        computedStreak++;
+      } else {
+        break;
+      }
+    }
+
     if (mounted) setState(() {
       _todayTasks = today; _allTasks = all;
-      _docsBySubject = docsMap; _loading = false;
+      _docsBySubject = docsMap;
+      _allDocs = docsMap.values.expand((list) => list).toList();
+      _cachedStreak = computedStreak;
+      _loading = false;
       _userName = userName;
       _profileImagePath = profileImagePath;
+      _totalXp = totalXp;
     });
   }
 
@@ -89,6 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
       completedAt: markingDone ? DateTime.now() : null,
     );
     await DBHelper.instance.updateTask(updated);
+    if (markingDone) await UserPrefs.incrementTotalXp(10);
     if (updated.isDone) await NotificationService.instance.cancelReminders(task);
     else await NotificationService.instance.scheduleReminders(updated);
     await _load();
@@ -96,28 +133,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showCelebration(Task task) {
-    final totalDone = _allTasks.where((t) => t.isDone).length;
-    final xp = totalDone * 10;
-    // Compute current streak from freshly-loaded _allTasks
-    bool sameDay(DateTime a, DateTime b) =>
-        a.year == b.year && a.month == b.month && a.day == b.day;
-    DateTime? completionDay(Task t) {
-      if (!t.isDone) return null;
-      final dt = t.completedAt ?? t.deadline;
-      return DateTime(dt.year, dt.month, dt.day);
-    }
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    int streak = 0;
-    if (_allTasks.any((t) { final d = completionDay(t); return d != null && sameDay(d, today); })) streak++;
-    for (int i = 1; i < 365; i++) {
-      final day = today.subtract(Duration(days: i));
-      if (_allTasks.any((t) { final d = completionDay(t); return d != null && sameDay(d, day); })) {
-        streak++;
-      } else {
-        break;
-      }
-    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
@@ -125,8 +140,8 @@ class _HomeScreenState extends State<HomeScreen> {
       barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (_) => _CelebrationSheet(
         taskName: task.name,
-        xp: xp,
-        streak: streak,
+        xp: _totalXp,
+        streak: _cachedStreak,
         isDark: isDark,
       ),
     );
@@ -170,8 +185,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _bulkDeleteTasks(List<Task> tasks) async {
     for (final task in tasks) {
       await NotificationService.instance.cancelReminders(task);
-      await DBHelper.instance.deleteTask(task.id!);
     }
+    await DBHelper.instance.bulkDeleteTasks(tasks.map((t) => t.id!).toList());
     await _load();
   }
 
@@ -198,8 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _editTask(task);
         },
       ),
-    ))
-        .then((_) => _load());
+    ));
   }
 
   @override
@@ -208,12 +222,18 @@ class _HomeScreenState extends State<HomeScreen> {
     final pages = [
       _TodayTab(
           tasks: _todayTasks, allTasks: _allTasks,
+          allDocs: _allDocs,
           onToggle: _toggleDone, onDelete: _deleteTask,
           onTap: _openTaskDetail, onAdd: _addTask,
           isDark: isDark,
           userName: _userName,
           profileImagePath: _profileImagePath,
-          onSearchTap: () => setState(() => _navIndex = 1),
+          totalXp: _totalXp,
+          onSearchTap: () => _pageController.animateToPage(
+            1,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          ),
           onProfileTap: () async {
             await Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ProfileScreen()));
@@ -236,7 +256,16 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppTheme.surface(isDark),
       body: _loading
           ? Center(child: CircularProgressIndicator(color: AppTheme.primary))
-          : pages[_navIndex],
+          : SafeArea(
+              top: false,    // each tab handles top padding via MediaQuery.padding.top
+              bottom: false, // handled by bottomNavigationBar's SafeArea
+              child: PageView(
+                controller: _pageController,
+                physics: const ClampingScrollPhysics(),
+                onPageChanged: (i) => setState(() => _navIndex = i),
+                children: pages,
+              ),
+            ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppTheme.navBg(isDark),
@@ -257,10 +286,14 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 _NavItem(icon: Icons.home_rounded, label: 'Home',
                     active: _navIndex == 0,
-                    onTap: () => setState(() => _navIndex = 0)),
+                    onTap: () => _pageController.animateToPage(0,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic)),
                 _NavItem(icon: Icons.task_alt_rounded, label: 'Tasks',
                     active: _navIndex == 1,
-                    onTap: () => setState(() => _navIndex = 1)),
+                    onTap: () => _pageController.animateToPage(1,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic)),
                 // Centre + button — round, inline, same height as nav items
                 GestureDetector(
                   onTap: _addTask,
@@ -284,10 +317,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 _NavItem(icon: Icons.folder_rounded, label: 'Docs',
                     active: _navIndex == 2,
-                    onTap: () => setState(() => _navIndex = 2)),
+                    onTap: () => _pageController.animateToPage(2,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic)),
                 _NavItem(icon: Icons.settings_rounded, label: 'Settings',
                     active: _navIndex == 3,
-                    onTap: () => setState(() => _navIndex = 3)),
+                    onTap: () => _pageController.animateToPage(3,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic)),
               ],
             ),
           ),
@@ -347,19 +384,23 @@ class _NavItem extends StatelessWidget {
 class _TodayTab extends StatefulWidget {
   final List<Task> tasks;    // today's pending tasks
   final List<Task> allTasks; // all tasks — for heatmap and energy ring
+  final List<NudgeDocument> allDocs; // all documents — for search
   final Function(Task) onToggle, onDelete, onTap;
   final VoidCallback onAdd;
   final bool isDark;
   final String userName;
   final String? profileImagePath;
+  final int totalXp;
   final VoidCallback onSearchTap;
   final VoidCallback onProfileTap;
   const _TodayTab({
     required this.tasks, required this.allTasks,
+    required this.allDocs,
     required this.onToggle, required this.onDelete,
     required this.onTap, required this.onAdd, required this.isDark,
     this.userName = '',
     this.profileImagePath,
+    this.totalXp = 0,
     required this.onSearchTap,
     required this.onProfileTap,
   });
@@ -369,6 +410,18 @@ class _TodayTab extends StatefulWidget {
 
 class _TodayTabState extends State<_TodayTab> {
   bool _nudgeDismissed = false;
+
+  // ── Search state ──────────────────────────────────────────────────────────────
+  bool _searchOpen = false;
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+
+  void _openSearch()  => setState(() => _searchOpen = true);
+  void _closeSearch() => setState(() {
+    _searchOpen = false;
+    _searchCtrl.clear();
+    _searchQuery = '';
+  });
 
   // ── Cached derived values — recomputed only when task lists change ──────────
   // Avoids re-running O(n) and O(365×n) logic on every build() triggered by
@@ -462,6 +515,12 @@ class _TodayTabState extends State<_TodayTab> {
   }
 
   @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(_TodayTab old) {
     super.didUpdateWidget(old);
     if (!identical(old.allTasks, widget.allTasks) ||
@@ -506,7 +565,8 @@ class _TodayTabState extends State<_TodayTab> {
     totalToday > 0 ? _cachedTodayDone / totalToday : 0.0;
     final topPad  = MediaQuery.of(context).padding.top;
 
-    return CustomScrollView(slivers: [
+    return Stack(children: [
+      CustomScrollView(slivers: [
 
       // ── 1. Greeting + Smart Nudge + Streak ───────────────────────
       SliverToBoxAdapter(
@@ -550,7 +610,7 @@ class _TodayTabState extends State<_TodayTab> {
               const SizedBox(width: 12),
               Row(children: [
                 GestureDetector(
-                  onTap: widget.onSearchTap,
+                  onTap: _openSearch,
                   child: Container(
                     width: 40, height: 40,
                     decoration: BoxDecoration(
@@ -644,7 +704,7 @@ class _TodayTabState extends State<_TodayTab> {
               child: _StreakSummaryCard(
                 isDark: isDark,
                 streak: _cachedStreak,
-                xp: widget.allTasks.where((t) => t.isDone).length * 10,
+                xp: widget.totalXp,
                 best: _cachedBest,
               ),
             ),
@@ -852,7 +912,35 @@ class _TodayTabState extends State<_TodayTab> {
       ),
 
       const SliverToBoxAdapter(child: SizedBox(height: 100)),
-    ]);
+    ]),  // end CustomScrollView
+    // ── Floating search ───────────────────────────────────────────
+    if (_searchOpen) ...[
+      Positioned.fill(
+        child: GestureDetector(
+          onTap: _closeSearch,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.28),
+          ),
+        ),
+      ),
+      Positioned(
+        top: topPad + 8,
+        left: 16,
+        right: 16,
+        child: _HomeSearchFloat(
+          ctrl: _searchCtrl,
+          query: _searchQuery,
+          allTasks: widget.allTasks,
+          allDocs: widget.allDocs,
+          isDark: isDark,
+          onChanged: (q) => setState(() => _searchQuery = q),
+          onClose: _closeSearch,
+          onTap: widget.onTap,
+        ),
+      ),
+    ],
+    ]);  // end Stack
   }
 }
 
@@ -968,6 +1056,356 @@ class _StreakSummaryCard extends StatelessWidget {
       ]),
     ),
   );
+}
+
+// ── Floating home search ──────────────────────────────────────────────────────
+
+class _HomeSearchFloat extends StatelessWidget {
+  final TextEditingController ctrl;
+  final String query;
+  final List<Task> allTasks;
+  final List<NudgeDocument> allDocs;
+  final bool isDark;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClose;
+  final Function(Task) onTap;
+
+  const _HomeSearchFloat({
+    required this.ctrl,
+    required this.query,
+    required this.allTasks,
+    required this.allDocs,
+    required this.isDark,
+    required this.onChanged,
+    required this.onClose,
+    required this.onTap,
+  });
+
+  List<Task> get _taskResults {
+    if (query.isEmpty) return [];
+    final q = query.toLowerCase();
+    return allTasks.where((t) =>
+        t.name.toLowerCase().contains(q) ||
+        t.subject.toLowerCase().contains(q) ||
+        t.description.toLowerCase().contains(q) ||
+        t.referenceLink.toLowerCase().contains(q)).toList();
+  }
+
+  List<NudgeDocument> get _docResults {
+    if (query.isEmpty) return [];
+    final q = query.toLowerCase();
+    return allDocs.where((d) =>
+        d.note.toLowerCase().contains(q) ||
+        d.subject.toLowerCase().contains(q) ||
+        d.filePath.toLowerCase().contains(q)).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final taskResults = _taskResults;
+    final docResults  = _docResults;
+    final hasResults  = taskResults.isNotEmpty || docResults.isNotEmpty;
+    final cardBg      = AppTheme.card(isDark);
+    final shadow = [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.14),
+        blurRadius: 24,
+        offset: const Offset(0, 6),
+      ),
+    ];
+
+    return Material(
+      color: Colors.transparent,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Search bar ───────────────────────────────────
+          Container(
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: shadow,
+            ),
+            child: Row(children: [
+              const SizedBox(width: 14),
+              const Icon(Icons.search_rounded, color: AppTheme.primary, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  onChanged: onChanged,
+                  style: GoogleFonts.manrope(
+                      fontSize: 14, fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.white : const Color(0xFF1A1A2E)),
+                  decoration: InputDecoration(
+                    hintText: 'Search tasks, files, subjects…',
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                    isDense: true,
+                    hintStyle: GoogleFonts.manrope(
+                        fontSize: 14, fontWeight: FontWeight.w500,
+                        color: AppTheme.subtext(isDark)),
+                  ),
+                ),
+              ),
+              if (query.isNotEmpty)
+                GestureDetector(
+                  onTap: () { ctrl.clear(); onChanged(''); },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Icon(Icons.close_rounded,
+                        color: AppTheme.subtext(isDark), size: 18),
+                  ),
+                )
+              else
+                const SizedBox(width: 6),
+              GestureDetector(
+                onTap: onClose,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 14, 0),
+                  child: Text('Cancel',
+                      style: GoogleFonts.manrope(
+                          fontSize: 14, fontWeight: FontWeight.w600,
+                          color: AppTheme.primary)),
+                ),
+              ),
+            ]),
+          ),
+
+          // ── Results panel ────────────────────────────────
+          if (query.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.55,
+              ),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: shadow,
+              ),
+              child: !hasResults
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 18),
+                      child: Text('No results for "$query"',
+                          style: GoogleFonts.manrope(
+                              fontSize: 13, fontWeight: FontWeight.w600,
+                              color: AppTheme.subtext(isDark))),
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Tasks section
+                            if (taskResults.isNotEmpty) ...[
+                              _SearchSectionHeader(
+                                  label: 'Tasks',
+                                  count: taskResults.length,
+                                  isDark: isDark),
+                              const SizedBox(height: 8),
+                              ...taskResults.map((task) => GestureDetector(
+                                onTap: () { onClose(); onTap(task); },
+                                child: _SearchTaskRow(task: task, isDark: isDark),
+                              )),
+                            ],
+                            // Docs section
+                            if (docResults.isNotEmpty) ...[
+                              if (taskResults.isNotEmpty)
+                                const SizedBox(height: 12),
+                              _SearchSectionHeader(
+                                  label: 'Files',
+                                  count: docResults.length,
+                                  isDark: isDark),
+                              const SizedBox(height: 8),
+                              ...docResults.map((doc) => _SearchDocRow(
+                                doc: doc,
+                                isDark: isDark,
+                                onTap: () async {
+                                  onClose();
+                                  await OpenFilex.open(doc.filePath);
+                                },
+                              )),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchSectionHeader extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool isDark;
+  const _SearchSectionHeader(
+      {required this.label, required this.count, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    Text(label.toUpperCase(),
+        style: GoogleFonts.manrope(
+            fontSize: 10, fontWeight: FontWeight.w700,
+            letterSpacing: 0.7, color: AppTheme.subtext(isDark))),
+    const SizedBox(width: 6),
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(100),
+      ),
+      child: Text('$count',
+          style: GoogleFonts.manrope(
+              fontSize: 10, fontWeight: FontWeight.w700,
+              color: AppTheme.primary)),
+    ),
+  ]);
+}
+
+class _SearchTaskRow extends StatelessWidget {
+  final Task task;
+  final bool isDark;
+  const _SearchTaskRow({required this.task, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final subjectColor = AppTheme.subjectColor(task.subject);
+    final urgColor = task.isDone
+        ? AppTheme.calm : AppTheme.urgencyColor(task.deadline);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLow(isDark),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(children: [
+          Container(
+            width: 3, height: 32,
+            decoration: BoxDecoration(
+              color: task.isDone
+                  ? AppTheme.subtext(isDark) : subjectColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(task.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.manrope(
+                        fontSize: 13, fontWeight: FontWeight.w700,
+                        color: task.isDone
+                            ? AppTheme.subtext(isDark) : AppTheme.text(isDark),
+                        decoration: task.isDone
+                            ? TextDecoration.lineThrough : null)),
+                const SizedBox(height: 2),
+                Row(children: [
+                  if (task.subject.isNotEmpty) ...[
+                    Text(task.subject,
+                        style: GoogleFonts.manrope(
+                            fontSize: 10, fontWeight: FontWeight.w600,
+                            color: subjectColor)),
+                    const SizedBox(width: 6),
+                    Text('·', style: TextStyle(
+                        fontSize: 10, color: AppTheme.subtext(isDark))),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(
+                    DateFormat('d MMM').format(task.deadline),
+                    style: GoogleFonts.manrope(
+                        fontSize: 10, fontWeight: FontWeight.w600,
+                        color: urgColor),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded,
+              size: 16, color: AppTheme.subtext(isDark)),
+        ]),
+      ),
+    );
+  }
+}
+
+class _SearchDocRow extends StatelessWidget {
+  final NudgeDocument doc;
+  final bool isDark;
+  final VoidCallback onTap;
+  const _SearchDocRow(
+      {required this.doc, required this.isDark, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppTheme.subjectColor(doc.subject);
+    final isImg = doc.isImage;
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceLow(isDark),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                isImg
+                    ? Icons.image_rounded
+                    : doc.isPdf
+                        ? Icons.picture_as_pdf_rounded
+                        : Icons.insert_drive_file_rounded,
+                color: color, size: 16,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(doc.note.isNotEmpty ? doc.note : 'Document',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.manrope(
+                          fontSize: 13, fontWeight: FontWeight.w700,
+                          color: AppTheme.text(isDark))),
+                  if (doc.subject.isNotEmpty)
+                    Text(doc.subject,
+                        style: GoogleFonts.manrope(
+                            fontSize: 10, fontWeight: FontWeight.w600,
+                            color: color)),
+                ],
+              ),
+            ),
+            Icon(Icons.open_in_new_rounded,
+                size: 14, color: AppTheme.subtext(isDark)),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 class _StatMini extends StatelessWidget {
@@ -1191,7 +1629,7 @@ class _AllTabState extends State<_AllTab> {
               ),
             ),
             if (_visible.isEmpty)
-              SliverFillRemaining(
+              SliverToBoxAdapter(
                 child: _EmptyState(
                   icon: Icons.task_alt_rounded,
                   title: _search.isNotEmpty ? 'No results' : 'No tasks here',
@@ -1325,7 +1763,7 @@ class _DocsTabState extends State<_DocsTab> {
         ),
       ),
       if (filtered.isEmpty)
-        SliverFillRemaining(child: _EmptyState(
+        SliverToBoxAdapter(child: _EmptyState(
           icon: Icons.folder_open_rounded,
           title: _search.isNotEmpty ? 'No results' : 'No documents yet',
           subtitle: _search.isNotEmpty
@@ -1654,14 +2092,14 @@ class _SettingsTabState extends State<_SettingsTab> {
               icon: Icons.info_outline_rounded,
               iconColor: AppTheme.primary,
               title: 'About Nudge',
-              subtitle: 'Version 2.0.0',
+              subtitle: 'Version 1.0.0',
               isDark: isDark,
               trailing: Icon(Icons.chevron_right_rounded,
                   color: AppTheme.subtext(isDark), size: 20),
               onTap: () => showAboutDialog(
                 context: context,
                 applicationName: 'Nudge',
-                applicationVersion: '2.0.0',
+                applicationVersion: '1.0.0',
                 applicationLegalese: '© 2026 Nudge Team',
               ),
             ),
@@ -1915,17 +2353,37 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           valueColor: AppTheme.text(isDark)),
                       if (task.description.isNotEmpty) ...[
                         const SizedBox(height: 10),
-                        _DetailRow(
-                            icon: Icons.notes_rounded,
-                            iconColor: AppTheme.subtext(isDark),
-                            label: 'Notes',
-                            value: task.description,
-                            valueColor: AppTheme.text(isDark)),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.notes_rounded, size: 16,
+                                color: AppTheme.subtext(isDark)),
+                            const SizedBox(width: 10),
+                            Expanded(child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Notes', style: TextStyle(
+                                    fontSize: 11, color: Color(0xFFAAAAB5),
+                                    fontWeight: FontWeight.w500)),
+                                const SizedBox(height: 2),
+                                _LinkifiedText(
+                                  text: task.description,
+                                  baseStyle: TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w600,
+                                      color: AppTheme.text(isDark)),
+                                ),
+                              ],
+                            )),
+                          ],
+                        ),
                       ],
                       if (task.referenceLinks.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         ...task.referenceLinks.asMap().entries.map((entry) {
                           final url = entry.value;
+                          final displayUrl = url.length > 50
+                              ? '${url.substring(0, 47)}…'
+                              : url;
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 6),
                             child: InkWell(
@@ -1943,8 +2401,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                 label: task.referenceLinks.length > 1
                                     ? 'Link ${entry.key + 1}'
                                     : 'Link',
-                                value: url,
+                                value: displayUrl,
                                 valueColor: AppTheme.primary,
+                                textDecoration: TextDecoration.underline,
                               ),
                             ),
                           );
@@ -2141,8 +2600,10 @@ class _DetailRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor, valueColor;
   final String label, value;
+  final TextDecoration? textDecoration;
   const _DetailRow({required this.icon, required this.iconColor,
-    required this.label, required this.value, required this.valueColor});
+    required this.label, required this.value, required this.valueColor,
+    this.textDecoration});
   @override
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2157,27 +2618,90 @@ class _DetailRow extends StatelessWidget {
                 fontWeight: FontWeight.w500)),
             const SizedBox(height: 2),
             Text(value, style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w600, color: valueColor)),
+                fontSize: 14, fontWeight: FontWeight.w600, color: valueColor,
+                decoration: textDecoration,
+                decorationColor: valueColor)),
           ])),
     ],
   );
+}
+
+/// Renders [text] with any http/https URLs highlighted as tappable indigo links.
+class _LinkifiedText extends StatelessWidget {
+  final String text;
+  final TextStyle baseStyle;
+
+  const _LinkifiedText({required this.text, required this.baseStyle});
+
+  static final _urlRegex = RegExp(r'https?://\S+', caseSensitive: false);
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = _urlRegex.allMatches(text).toList();
+    if (matches.isEmpty) return Text(text, style: baseStyle);
+
+    final spans = <InlineSpan>[];
+    int last = 0;
+    final linkStyle = baseStyle.copyWith(
+      color: AppTheme.primary,
+      decoration: TextDecoration.underline,
+      decorationColor: AppTheme.primary,
+    );
+    for (final match in matches) {
+      if (match.start > last) {
+        spans.add(TextSpan(text: text.substring(last, match.start),
+            style: baseStyle));
+      }
+      final url = match.group(0)!;
+      spans.add(TextSpan(
+        text: url.length > 50 ? '${url.substring(0, 47)}…' : url,
+        style: linkStyle,
+        recognizer: TapGestureRecognizer()
+          ..onTap = () async {
+            final uri = Uri.tryParse(url);
+            if (uri != null) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+      ));
+      last = match.end;
+    }
+    if (last < text.length) {
+      spans.add(TextSpan(text: text.substring(last), style: baseStyle));
+    }
+    return Text.rich(TextSpan(children: spans));
+  }
 }
 
 class _LinkedDocCard extends StatelessWidget {
   final NudgeDocument doc;
   final bool isDark;
   const _LinkedDocCard({required this.doc, required this.isDark});
+
+  bool get _fileExists => import_dart_io.File(doc.filePath).existsSync();
+
   @override
   Widget build(BuildContext context) {
     final color = AppTheme.subjectColor(doc.subject);
+    final isImg = doc.isImage && _fileExists;
     return GestureDetector(
-      onTap: () async {
-        final result = await OpenFilex.open(doc.filePath);
-        if (result.type != ResultType.done && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Cannot open: ${result.message}'),
-            backgroundColor: AppTheme.danger,
+      onTap: () {
+        if (isImg) {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => _FullScreenImageViewer(
+              filePath: doc.filePath,
+              title: doc.note.isNotEmpty ? doc.note : 'Image',
+            ),
           ));
+        } else {
+          OpenFilex.open(doc.filePath).then((result) {
+            if (result.type != ResultType.done && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Cannot open: ${result.message}'),
+                backgroundColor: AppTheme.danger,
+              ));
+            }
+          });
         }
       },
       child: Container(
@@ -2189,28 +2713,80 @@ class _LinkedDocCard extends StatelessWidget {
         child: ListTile(
           contentPadding:
           const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          leading: Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-                doc.isPdf
-                    ? Icons.picture_as_pdf_rounded
-                    : Icons.image_rounded,
-                color: color, size: 24),
-          ),
+          leading: isImg
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.file(
+                    import_dart_io.File(doc.filePath),
+                    width: 44, height: 44,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.image_rounded, color: color, size: 24),
+                    ),
+                  ),
+                )
+              : Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                      doc.isPdf
+                          ? Icons.picture_as_pdf_rounded
+                          : Icons.image_rounded,
+                      color: color, size: 24),
+                ),
           title: Text(doc.note.isNotEmpty ? doc.note : 'Document',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
                   color: AppTheme.text(isDark)),
               maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(
-              doc.isPdf ? 'PDF · tap to open' : 'Image · tap to open',
+              doc.isPdf ? 'PDF · tap to open'
+              : isImg   ? 'Image · tap to view'
+              : 'Image · tap to open',
               style: TextStyle(
                   fontSize: 12, color: AppTheme.subtext(isDark))),
-          trailing: Icon(Icons.open_in_new_rounded,
+          trailing: Icon(
+              isImg ? Icons.fullscreen_rounded : Icons.open_in_new_rounded,
               color: AppTheme.subtext(isDark), size: 18),
+        ),
+      ),
+    );
+  }
+}
+
+class _FullScreenImageViewer extends StatelessWidget {
+  final String filePath;
+  final String title;
+  const _FullScreenImageViewer({required this.filePath, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(title,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 5.0,
+          child: Image.file(
+            import_dart_io.File(filePath),
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Icon(
+                Icons.broken_image_rounded, color: Colors.white54, size: 64),
+          ),
         ),
       ),
     );
@@ -2229,9 +2805,9 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
-      padding: const EdgeInsets.all(40),
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, size: 56,
+        Icon(icon, size: 40,
             color: AppTheme.subtext(isDark).withValues(alpha: 0.4)),
         const SizedBox(height: 16),
         Text(title, style: TextStyle(fontSize: 18,

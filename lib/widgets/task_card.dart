@@ -10,6 +10,25 @@ class TaskCard extends StatelessWidget {
   final VoidCallback onToggleDone;
   final VoidCallback onDelete;
   final bool isSelected;
+  final int docCount;
+
+  // 0xFF4A40E0 at 6% opacity: (0.06 * 255).round() = 15 = 0x0F
+  static const _cardShadow = BoxShadow(
+    color: Color(0x0F4A40E0),
+    blurRadius: 20,
+    offset: Offset(0, 4),
+  );
+  static const _cardRadius = BorderRadius.all(Radius.circular(16));
+  static const _swipeRightBg = BoxDecoration(
+    color: Color(0xFFE8F5E9),
+    borderRadius: _cardRadius,
+    border: Border.fromBorderSide(BorderSide(color: Color(0xFFC8E6C9))),
+  );
+  static const _swipeLeftBg = BoxDecoration(
+    color: Color(0xFFFFEEEE),
+    borderRadius: _cardRadius,
+    border: Border.fromBorderSide(BorderSide(color: Color(0xFFFFCCCC))),
+  );
 
   const TaskCard({
     super.key,
@@ -17,6 +36,7 @@ class TaskCard extends StatelessWidget {
     required this.onToggleDone,
     required this.onDelete,
     this.isSelected = false,
+    this.docCount = 0,
   });
 
   String get _timeLabel {
@@ -42,25 +62,17 @@ class TaskCard extends StatelessWidget {
     final accentColor  = isDone ? AppTheme.subtext(isDark) : subjectColor;
 
     final cardContent = ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: _cardRadius,
       child: Stack(
         children: [
           Container(
             decoration: BoxDecoration(
               color: AppTheme.card(isDark),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: _cardRadius,
               border: isDark
                   ? Border.all(color: AppTheme.border(isDark))
                   : null,
-              boxShadow: isDark
-                  ? null
-                  : [
-                      BoxShadow(
-                        color: const Color(0xFF4A40E0).withValues(alpha: 0.06),
-                        blurRadius: 20,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+              boxShadow: isDark ? null : const [_cardShadow],
             ),
             child: Padding(
               // Extra left padding to make room for the accent bar
@@ -164,6 +176,50 @@ class TaskCard extends StatelessWidget {
                             ),
                           ),
                         ]),
+                        // Description preview
+                        if (task.description.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            task.description,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDone
+                                  ? const Color(0xFFAAAAB5)
+                                  : const Color(0xFF888899),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                        // Link / doc count indicators
+                        if (task.referenceLinks.isNotEmpty || docCount > 0) ...[
+                          const SizedBox(height: 6),
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (task.referenceLinks.isNotEmpty) ...[
+                              Icon(Icons.link_rounded,
+                                  size: 11, color: const Color(0xFF4A40E0).withValues(alpha: 0.7)),
+                              const SizedBox(width: 3),
+                              Text('${task.referenceLinks.length}',
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF4A40E0))),
+                            ],
+                            if (task.referenceLinks.isNotEmpty && docCount > 0)
+                              const SizedBox(width: 8),
+                            if (docCount > 0) ...[
+                              Icon(Icons.attach_file_rounded,
+                                  size: 11, color: const Color(0xFF888899)),
+                              const SizedBox(width: 3),
+                              Text('$docCount',
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF888899))),
+                            ],
+                          ]),
+                        ],
                       ],
                     ),
                   ),
@@ -231,11 +287,7 @@ class TaskCard extends StatelessWidget {
         background: Container(
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.only(left: 20),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F5E9),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFC8E6C9)),
-          ),
+          decoration: _swipeRightBg,
           child: Icon(
             task.isDone ? Icons.replay_rounded : Icons.check_rounded,
             color: const Color(0xFF388E3C), size: 24,
@@ -245,11 +297,7 @@ class TaskCard extends StatelessWidget {
         secondaryBackground: Container(
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 20),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFEEEE),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFFFCCCC)),
-          ),
+          decoration: _swipeLeftBg,
           child: const Icon(Icons.delete_outline_rounded,
               color: Color(0xFFA32D2D), size: 24),
         ),

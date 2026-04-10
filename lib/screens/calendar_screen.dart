@@ -135,20 +135,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) =>
-                SizedBox(
-                  width: 36,
-                  child: Center(
-                    child: Text(d,
-                        style: GoogleFonts.manrope(
-                            fontSize: 11, fontWeight: FontWeight.w700,
-                            color: AppTheme.subtext(isDark))),
+            child: LayoutBuilder(builder: (_, constraints) {
+              final cellW = constraints.maxWidth / 7;
+              return Row(
+                children: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) =>
+                  SizedBox(
+                    width: cellW,
+                    child: Center(
+                      child: Text(d,
+                          style: GoogleFonts.manrope(
+                              fontSize: 11, fontWeight: FontWeight.w700,
+                              color: AppTheme.subtext(isDark))),
+                    ),
                   ),
-                ),
-              ).toList(),
-            ),
+                ).toList(),
+              );
+            }),
           ),
         ),
 
@@ -156,17 +158,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
+            child: LayoutBuilder(builder: (_, constraints) {
+              final cellW  = constraints.maxWidth / 7;
+              final cellH  = (cellW * 1.2).clamp(36.0, 52.0);
+              return Column(
               children: List.generate(rows, (row) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: List.generate(7, (col) {
                       final cellIndex = row * 7 + col;
                       final dayNumber = cellIndex - (startWeekday - 1) + 1;
                       if (dayNumber < 1 || dayNumber > daysInMonth) {
-                        return const SizedBox(width: 36, height: 44);
+                        return SizedBox(width: cellW, height: cellH);
                       }
                       final day = DateTime(
                           firstOfMonth.year, firstOfMonth.month, dayNumber);
@@ -182,7 +186,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         onTap: () => setState(() => _selectedDay = day),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
-                          width: 36, height: 44,
+                          width: cellW, height: cellH,
                           decoration: BoxDecoration(
                             color: isSel
                                 ? AppTheme.primary
@@ -245,7 +249,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                 );
               }),
-            ),
+              );   // end Column
+            }),    // end LayoutBuilder
           ),
         ),
 

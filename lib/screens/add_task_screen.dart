@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/task.dart';
 import '../models/document.dart';
 import '../parser/task_parser.dart';
@@ -16,19 +17,29 @@ import 'home_screen.dart';
 
 class _MutableTask {
   final TextEditingController nameCtrl;
+  final TextEditingController descCtrl;
+  final List<TextEditingController> linkCtrls;
+  final List<({String path, String mime, String name})> attachedFiles;
   DateTime deadline;
   String taskType;
   String subject;
   String priority;
 
   _MutableTask.fromParsed(ParsedTask p)
-      : nameCtrl = TextEditingController(text: p.taskName),
+      : nameCtrl     = TextEditingController(text: p.taskName),
+        descCtrl     = TextEditingController(),
+        linkCtrls    = [TextEditingController()],
+        attachedFiles = [],
         deadline = p.deadline,
         taskType = p.taskType,
         subject  = p.subject,
         priority = p.priority;
 
-  void dispose() => nameCtrl.dispose();
+  void dispose() {
+    nameCtrl.dispose();
+    descCtrl.dispose();
+    for (final c in linkCtrls) c.dispose();
+  }
 }
 
 // ── Reminder model ────────────────────────────────────────────────────────────
@@ -195,6 +206,57 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     _linkCtrls.removeAt(i);
   });
 
+  // ── Per-task (multi-task) helpers ─────────────────────────────────────────────
+  void _addLinkFor(int i) =>
+      setState(() => _multiTasks[i].linkCtrls.add(TextEditingController()));
+
+  void _removeLinkFor(int i, int j) => setState(() {
+    _multiTasks[i].linkCtrls[j].dispose();
+    _multiTasks[i].linkCtrls.removeAt(j);
+  });
+
+  void _removeFileFor(int i, int j) =>
+      setState(() => _multiTasks[i].attachedFiles.removeAt(j));
+
+  Future<void> _takePhotoFor(int i) async {
+    final picker = ImagePicker();
+    final photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (photo == null || !mounted) return;
+    setState(() {
+      if (_multiTasks[i].attachedFiles.any((a) => a.path == photo.path)) return;
+      _multiTasks[i].attachedFiles.add((path: photo.path, name: photo.name, mime: 'image/jpeg'));
+    });
+  }
+
+  Future<void> _pickFileFor(int i) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowMultiple: true,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    setState(() {
+      for (final f in result.files) {
+        if (f.path == null) continue;
+        if (_multiTasks[i].attachedFiles.any((a) => a.path == f.path)) continue;
+        _multiTasks[i].attachedFiles.add((
+          path: f.path!,
+          name: f.name,
+          mime: _mimeFromExt(f.extension ?? ''),
+        ));
+      }
+    });
+  }
+
+  /// Prepends https:// to URLs that have no scheme.
+  String _normalizeUrl(String url) {
+    if (url.isEmpty) return url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return 'https://$url';
+    }
+    return url;
+  }
+
   // ── Per-task deadline picker for multi-task preview ──────────────────────────
   Future<void> _pickDeadlineFor(int index) async {
     final initial = _multiTasks[index].deadline;
@@ -223,6 +285,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     setState(() {
       _multiTasks[index].deadline =
           DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    });
+  }
+
+  Future<void> _takePhoto() async {
+    final picker = ImagePicker();
+    final photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (photo == null || !mounted) return;
+    setState(() {
+      if (_attachedFiles.any((a) => a.path == photo.path)) return;
+      _attachedFiles.add((path: photo.path, name: photo.name, mime: 'image/jpeg'));
     });
   }
 
@@ -270,15 +342,20 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) {
-          return Container(
+          return ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.90,
+            ),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Container(
             decoration: const BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
-            padding: EdgeInsets.only(
-              left: 24, right: 24, top: 24,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-            ),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               // Handle bar
               Container(width: 40, height: 4,
@@ -339,6 +416,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 child: const Text('Cancel', style: TextStyle(color: Color(0xFF888899))),
               ),
             ]),
+          ),
+            ),
           );
         },
       ),
@@ -367,7 +446,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         taskType:      _taskType,
         subject:       _subject,
         description:   _descCtrl.text.trim(),
-        referenceLink: _linkCtrls.map((c) => c.text.trim()).where((s) => s.isNotEmpty).join('\n'),
+        referenceLink: _linkCtrls.map((c) => _normalizeUrl(c.text.trim())).where((s) => s.isNotEmpty).join('\n'),
       );
       await DBHelper.instance.updateTask(updated);
       await _scheduleSelected(updated);
@@ -378,7 +457,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
     final desc    = _descCtrl.text.trim();
     final linkStr = _linkCtrls
-        .map((c) => c.text.trim())
+        .map((c) => _normalizeUrl(c.text.trim()))
         .where((s) => s.isNotEmpty)
         .join('\n');
 
@@ -386,19 +465,23 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       // Multi-task: create one DB task per (user-edited) mutable task
       for (final mt in _multiTasks) {
         final name = mt.nameCtrl.text.trim();
+        final mtLinkStr = mt.linkCtrls
+            .map((c) => _normalizeUrl(c.text.trim()))
+            .where((s) => s.isNotEmpty)
+            .join('\n');
         final task = Task(
           name:          name.isNotEmpty ? name : _ctrl.text.trim(),
           deadline:      mt.deadline,
           priority:      mt.priority,
           taskType:      mt.taskType,
           subject:       mt.subject.isNotEmpty ? mt.subject : _subject,
-          description:   desc,
-          referenceLink: linkStr,
+          description:   mt.descCtrl.text.trim(),
+          referenceLink: mtLinkStr,
         );
         final id    = await DBHelper.instance.createTask(task);
         final saved = task.copyWith(id: id);
         await _scheduleSelected(saved);
-        for (final f in _attachedFiles) {
+        for (final f in mt.attachedFiles) {
           await DBHelper.instance.createDocument(NudgeDocument(
             filePath: f.path,
             mimeType: f.mime,
@@ -499,7 +582,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: GestureDetector(
+      body: SafeArea(
+        child: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
@@ -642,6 +726,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       }
                     }),
                     onPickDeadline: _pickDeadlineFor,
+                    onAddLink:      _addLinkFor,
+                    onRemoveLink:   _removeLinkFor,
+                    onPickFile:      _pickFileFor,
+                    onTakePhoto:     _takePhotoFor,
+                    onRemoveFile:    _removeFileFor,
+                    onBatchSubject:  (s) => setState(() {
+                      for (final mt in _multiTasks) mt.subject = s;
+                    }),
                   )
                 else
                   _ReviewCard(
@@ -652,13 +744,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     onTypeChange:     (v) => setState(() => _taskType = v),
                     onSubjectChange:  (v) => setState(() => _subject = v),
                   ),
-                const SizedBox(height: 16),
-                _DescLinksSection(
-                  descCtrl:    _descCtrl,
-                  linkCtrls:   _linkCtrls,
-                  onAddLink:   _addLink,
-                  onRemoveLink: _removeLink,
-                ),
+                if (!(_parsed!.isMultiTask && _multiTasks.isNotEmpty)) ...[
+                  const SizedBox(height: 16),
+                  _DescLinksSection(
+                    descCtrl:    _descCtrl,
+                    linkCtrls:   _linkCtrls,
+                    onAddLink:   _addLink,
+                    onRemoveLink: _removeLink,
+                  ),
+                ],
                 const SizedBox(height: 16),
                 _RemindersSection(
                   reminders:      _reminders,
@@ -667,12 +761,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   onAddCustom:    _addCustomReminder,
                   onRemoveCustom: (i) => setState(() => _reminders.removeAt(i)),
                 ),
-                const SizedBox(height: 16),
-                _AttachmentSection(
-                  files:     _attachedFiles,
-                  onPick:    _pickFile,
-                  onRemove:  (i) => setState(() => _attachedFiles.removeAt(i)),
-                ),
+                if (!(_parsed!.isMultiTask && _multiTasks.isNotEmpty)) ...[
+                  const SizedBox(height: 16),
+                  _AttachmentSection(
+                    files:       _attachedFiles,
+                    onPick:      _pickFile,
+                    onTakePhoto: _takePhoto,
+                    onRemove:    (i) => setState(() => _attachedFiles.removeAt(i)),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -690,6 +787,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -924,18 +1022,20 @@ class _ReviewCard extends StatelessWidget {
       builder: (sheetCtx) => Padding(
         padding: EdgeInsets.only(left: 20, right: 20, top: 20,
             bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Subject', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 12),
-          TextField(controller: ctrl, autofocus: true,
-              decoration: const InputDecoration(hintText: 'e.g. Operating Systems, Maths…')),
-          const SizedBox(height: 12),
-          SizedBox(width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () { onSubjectChange(ctrl.text.trim()); Navigator.pop(sheetCtx); },
-                child: const Text('Done'),
-              )),
-        ]),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('Subject', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            TextField(controller: ctrl, autofocus: true,
+                decoration: const InputDecoration(hintText: 'e.g. Operating Systems, Maths…')),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () { onSubjectChange(ctrl.text.trim()); Navigator.pop(sheetCtx); },
+                  child: const Text('Done'),
+                )),
+          ]),
+        ),
       ),
     );
   }
@@ -1202,11 +1302,13 @@ class _RemindersSection extends StatelessWidget {
 class _AttachmentSection extends StatelessWidget {
   final List<({String path, String mime, String name})> files;
   final VoidCallback onPick;
+  final VoidCallback onTakePhoto;
   final ValueChanged<int> onRemove;
 
   const _AttachmentSection({
     required this.files,
     required this.onPick,
+    required this.onTakePhoto,
     required this.onRemove,
   });
 
@@ -1300,37 +1402,94 @@ class _AttachmentSection extends StatelessWidget {
               const SizedBox(height: 4),
             ],
 
-            // Add more / first file button
-            GestureDetector(
-              onTap: onPick,
-              child: Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(vertical: files.isEmpty ? 18 : 10),
-                decoration: BoxDecoration(
-                  color: AppTheme.lightSurface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.lightBorder),
+            // Camera + file picker buttons
+            if (files.isEmpty) ...[
+              Row(children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onTakePhoto,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.lightSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.lightBorder),
+                      ),
+                      child: Column(children: [
+                        Icon(Icons.camera_alt_rounded, size: 28, color: Colors.grey.shade400),
+                        const SizedBox(height: 6),
+                        Text('Take Photo',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500,
+                                fontWeight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ),
                 ),
-                child: files.isEmpty
-                    ? Column(children: [
-                  Icon(Icons.upload_file_rounded, size: 32, color: Colors.grey.shade300),
-                  const SizedBox(height: 8),
-                  Text('Tap to attach files',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade400,
-                          fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 4),
-                  Text('Will appear in Docs section',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade300)),
-                ])
-                    : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.add_rounded, size: 16, color: Colors.grey.shade500),
-                  const SizedBox(width: 6),
-                  Text('Add another file',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade500,
-                          fontWeight: FontWeight.w600)),
-                ]),
-              ),
-            ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onPick,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.lightSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.lightBorder),
+                      ),
+                      child: Column(children: [
+                        Icon(Icons.upload_file_rounded, size: 28, color: Colors.grey.shade400),
+                        const SizedBox(height: 6),
+                        Text('Attach File',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500,
+                                fontWeight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ),
+                ),
+              ]),
+            ] else ...[
+              Row(children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onTakePhoto,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.lightSurface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.lightBorder),
+                      ),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.camera_alt_rounded, size: 15, color: Colors.grey.shade500),
+                        const SizedBox(width: 5),
+                        Text('Photo', style: TextStyle(fontSize: 12, color: Colors.grey.shade500,
+                            fontWeight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onPick,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.lightSurface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.lightBorder),
+                      ),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.add_rounded, size: 15, color: Colors.grey.shade500),
+                        const SizedBox(width: 5),
+                        Text('File', style: TextStyle(fontSize: 12, color: Colors.grey.shade500,
+                            fontWeight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ),
+                ),
+              ]),
+            ],
           ]),
         ),
       ]),
@@ -1344,12 +1503,56 @@ class _MultiTaskPreviewSection extends StatelessWidget {
   final List<_MutableTask> tasks;
   final ValueChanged<int> onRemove;
   final ValueChanged<int> onPickDeadline;
+  final ValueChanged<int> onAddLink;
+  final void Function(int, int) onRemoveLink;
+  final ValueChanged<int> onPickFile;
+  final ValueChanged<int> onTakePhoto;
+  final void Function(int, int) onRemoveFile;
+  final ValueChanged<String> onBatchSubject;
 
   const _MultiTaskPreviewSection({
     required this.tasks,
     required this.onRemove,
     required this.onPickDeadline,
+    required this.onAddLink,
+    required this.onRemoveLink,
+    required this.onPickFile,
+    required this.onTakePhoto,
+    required this.onRemoveFile,
+    required this.onBatchSubject,
   });
+
+  void _batchSubjectSheet(BuildContext context) {
+    final ctrl = TextEditingController();
+    showModalBottomSheet(
+      context: context, isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('Set subject for all tasks',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            TextField(controller: ctrl, autofocus: true,
+                decoration: const InputDecoration(
+                    hintText: 'e.g. Operating Systems, Maths…')),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    onBatchSubject(ctrl.text.trim());
+                    Navigator.pop(sheetCtx);
+                  },
+                  child: const Text('Done'),
+                )),
+          ]),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1375,9 +1578,22 @@ class _MultiTaskPreviewSection extends StatelessWidget {
             Text('${tasks.length} task${tasks.length == 1 ? "" : "s"} detected',
                 style: const TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+            const SizedBox(width: 6),
+            Text('·', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => _batchSubjectSheet(context),
+              child: const Text('Set all \u25b8',
+                  style: TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w600,
+                      color: AppTheme.primary)),
+            ),
             const Spacer(),
-            Text('Tap to edit • tap date to change',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            Flexible(
+              child: Text('Tap to edit • tap date to change',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            ),
           ]),
         ),
         // Task rows
@@ -1385,11 +1601,16 @@ class _MultiTaskPreviewSection extends StatelessWidget {
           final i    = entry.key;
           final task = entry.value;
           return _MultiTaskRow(
-            task:          task,
-            index:         i,
-            isLast:        i == tasks.length - 1,
-            onRemove:      onRemove,
+            task:           task,
+            index:          i,
+            isLast:         i == tasks.length - 1,
+            onRemove:       onRemove,
             onPickDeadline: onPickDeadline,
+            onAddLink:      onAddLink,
+            onRemoveLink:   onRemoveLink,
+            onPickFile:     onPickFile,
+            onTakePhoto:    onTakePhoto,
+            onRemoveFile:   onRemoveFile,
           );
         }),
       ]),
@@ -1397,12 +1618,17 @@ class _MultiTaskPreviewSection extends StatelessWidget {
   }
 }
 
-class _MultiTaskRow extends StatelessWidget {
+class _MultiTaskRow extends StatefulWidget {
   final _MutableTask task;
   final int index;
   final bool isLast;
   final ValueChanged<int> onRemove;
   final ValueChanged<int> onPickDeadline;
+  final ValueChanged<int> onAddLink;
+  final void Function(int, int) onRemoveLink;
+  final ValueChanged<int> onPickFile;
+  final ValueChanged<int> onTakePhoto;
+  final void Function(int, int) onRemoveFile;
 
   const _MultiTaskRow({
     required this.task,
@@ -1410,10 +1636,69 @@ class _MultiTaskRow extends StatelessWidget {
     required this.isLast,
     required this.onRemove,
     required this.onPickDeadline,
+    required this.onAddLink,
+    required this.onRemoveLink,
+    required this.onPickFile,
+    required this.onTakePhoto,
+    required this.onRemoveFile,
   });
 
   @override
+  State<_MultiTaskRow> createState() => _MultiTaskRowState();
+}
+
+class _MultiTaskRowState extends State<_MultiTaskRow> {
+  bool _expanded = false;
+
+  IconData _iconFor(String mime) {
+    if (mime == 'application/pdf') return Icons.picture_as_pdf_rounded;
+    if (mime.startsWith('image/')) return Icons.image_rounded;
+    return Icons.insert_drive_file_rounded;
+  }
+
+  Color _colorFor(String mime) {
+    if (mime == 'application/pdf') return const Color(0xFFD85A30);
+    if (mime.startsWith('image/')) return const Color(0xFF378ADD);
+    return AppTheme.primary;
+  }
+
+  void _editSubject(BuildContext context) {
+    final ctrl = TextEditingController(text: widget.task.subject);
+    showModalBottomSheet(
+      context: context, isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('Subject',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            TextField(
+                controller: ctrl, autofocus: true,
+                decoration: const InputDecoration(
+                    hintText: 'e.g. Operating Systems, Maths…')),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() => widget.task.subject = ctrl.text.trim());
+                    Navigator.pop(sheetCtx);
+                  },
+                  child: const Text('Done'),
+                )),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final task  = widget.task;
+    final index = widget.index;
     final sc = AppTheme.subjectColor(
         task.subject.isNotEmpty ? task.subject : 'default');
     return Container(
@@ -1422,7 +1707,7 @@ class _MultiTaskRow extends StatelessWidget {
         border: index > 0
             ? Border(top: BorderSide(color: AppTheme.lightBorder))
             : null,
-        borderRadius: isLast
+        borderRadius: widget.isLast
             ? const BorderRadius.only(
                 bottomLeft: Radius.circular(16),
                 bottomRight: Radius.circular(16))
@@ -1464,7 +1749,7 @@ class _MultiTaskRow extends StatelessWidget {
             Wrap(spacing: 6, runSpacing: 4, children: [
               // Deadline chip (tappable)
               GestureDetector(
-                onTap: () => onPickDeadline(index),
+                onTap: () => widget.onPickDeadline(index),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
@@ -1482,17 +1767,32 @@ class _MultiTaskRow extends StatelessWidget {
                   ]),
                 ),
               ),
-              if (task.subject.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: sc.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(task.subject,
-                      style: TextStyle(
-                          fontSize: 10, fontWeight: FontWeight.w600, color: sc)),
-                ),
+              GestureDetector(
+                onTap: () => _editSubject(context),
+                child: task.subject.isNotEmpty
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: sc.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(task.subject,
+                            style: TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w600, color: sc)),
+                      )
+                    : Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppTheme.lightSurface,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppTheme.lightBorder),
+                        ),
+                        child: Text('Add subject',
+                            style: TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade400)),
+                      ),
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
@@ -1507,11 +1807,200 @@ class _MultiTaskRow extends StatelessWidget {
                         color: Color(0xFF888899))),
               ),
             ]),
+            // "Add details / Hide details" toggle
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(
+                  _expanded ? 'Hide details' : 'Add details',
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w600,
+                      color: AppTheme.primary),
+                ),
+                const SizedBox(width: 3),
+                Icon(
+                  _expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 14, color: AppTheme.primary,
+                ),
+              ]),
+            ),
+            // Collapsible details section
+            if (_expanded) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightSurface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.lightBorder),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // Description field
+                  TextField(
+                    controller: task.descCtrl,
+                    maxLines: 2, minLines: 1,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      hintText: 'Description or notes…',
+                      hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF1A1A2E)),
+                  ),
+                  const SizedBox(height: 8),
+                  Divider(color: AppTheme.lightBorder, height: 1),
+                  const SizedBox(height: 8),
+                  // Link fields
+                  ...List.generate(task.linkCtrls.length, (j) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(children: [
+                      Icon(Icons.link_rounded, size: 14, color: Colors.grey.shade400),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: TextField(
+                          controller: task.linkCtrls[j],
+                          keyboardType: TextInputType.url,
+                          decoration: InputDecoration(
+                            hintText: task.linkCtrls.length > 1
+                                ? 'Link ${j + 1} (optional)'
+                                : 'Reference link (optional)',
+                            hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF1A1A2E)),
+                        ),
+                      ),
+                      if (task.linkCtrls.length > 1)
+                        GestureDetector(
+                          onTap: () => widget.onRemoveLink(index, j),
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Icon(Icons.remove_circle_outline_rounded,
+                                size: 16, color: Colors.grey.shade400),
+                          ),
+                        ),
+                    ]),
+                  )),
+                  // Add link button
+                  GestureDetector(
+                    onTap: () => widget.onAddLink(index),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.add_rounded, size: 12, color: AppTheme.primary),
+                      const SizedBox(width: 3),
+                      const Text('Add link',
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w600,
+                              color: AppTheme.primary)),
+                    ]),
+                  ),
+                  const SizedBox(height: 8),
+                  Divider(color: AppTheme.lightBorder, height: 1),
+                  const SizedBox(height: 8),
+                  // Attached files list
+                  if (task.attachedFiles.isNotEmpty) ...[
+                    ...List.generate(task.attachedFiles.length, (j) {
+                      final f     = task.attachedFiles[j];
+                      final color = _colorFor(f.mime);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(children: [
+                          Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(_iconFor(f.mime), color: color, size: 16),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(f.name,
+                                style: const TextStyle(
+                                    fontSize: 12, fontWeight: FontWeight.w600,
+                                    color: Color(0xFF1A1A2E)),
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () => widget.onRemoveFile(index, j),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFEEEE),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Icon(Icons.close_rounded,
+                                  size: 14, color: Color(0xFFA32D2D)),
+                            ),
+                          ),
+                        ]),
+                      );
+                    }),
+                    const SizedBox(height: 6),
+                  ],
+                  // Photo + file picker buttons
+                  Row(children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => widget.onTakePhoto(index),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.lightCard,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.lightBorder),
+                          ),
+                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(Icons.camera_alt_rounded, size: 13,
+                                color: Colors.grey.shade500),
+                            const SizedBox(width: 4),
+                            Text('Photo',
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey.shade500,
+                                    fontWeight: FontWeight.w600)),
+                          ]),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => widget.onPickFile(index),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.lightCard,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.lightBorder),
+                          ),
+                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(Icons.add_rounded, size: 13,
+                                color: Colors.grey.shade500),
+                            const SizedBox(width: 4),
+                            Text('File',
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey.shade500,
+                                    fontWeight: FontWeight.w600)),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ]),
+              ),
+            ],
           ]),
         ),
         // Remove button
         GestureDetector(
-          onTap: () => onRemove(index),
+          onTap: () => widget.onRemove(index),
           child: Padding(
             padding: const EdgeInsets.only(left: 8),
             child: Icon(Icons.remove_circle_outline_rounded,

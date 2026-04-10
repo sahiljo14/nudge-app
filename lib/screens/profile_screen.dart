@@ -1,7 +1,7 @@
 // lib/screens/profile_screen.dart
 
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../database/db_helper.dart';
@@ -23,6 +23,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<String> _userSubjects = [];
   String? _profileImagePath;
   bool _loading = true;
+  int _totalXp = 0;
 
   @override
   void initState() {
@@ -36,6 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       UserPrefs.getUserName(),
       UserPrefs.getUserSubjects(),
       UserPrefs.getProfileImagePath(),
+      UserPrefs.getTotalXp(),
     ]);
     if (mounted) {
       setState(() {
@@ -43,6 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _userName          = results[1] as String;
         _userSubjects      = results[2] as List<String>;
         _profileImagePath  = results[3] as String?;
+        _totalXp           = results[4] as int;
         _loading           = false;
       });
     }
@@ -80,7 +83,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   int get _totalDone => _allTasks.where((t) => t.isDone).length;
 
-  int get _xp => _totalDone * 10;
+  int get _xp => _totalXp;
 
   int get _level => _xp ~/ 100 + 1;
 
@@ -601,10 +604,15 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   }
 
   Future<void> _pickPhoto() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.image);
-    if (result != null && result.files.single.path != null) {
-      setState(() => _imagePath = result.files.single.path);
-    }
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _PhotoSourceSheet(isDark: widget.isDark),
+    );
+    if (source == null || !mounted) return;
+    final picker = ImagePicker();
+    final photo = await picker.pickImage(source: source, imageQuality: 85);
+    if (photo != null && mounted) setState(() => _imagePath = photo.path);
   }
 
   Future<void> _save() async {
@@ -804,6 +812,81 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       ),
     );
   }
+}
+
+// ── Photo source bottom sheet ─────────────────────────────────────────────────
+
+class _PhotoSourceSheet extends StatelessWidget {
+  final bool isDark;
+  const _PhotoSourceSheet({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.card(isDark),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 40, height: 4,
+          decoration: BoxDecoration(
+              color: AppTheme.border(isDark),
+              borderRadius: BorderRadius.circular(2)),
+        ),
+        const SizedBox(height: 20),
+        Text('Profile photo',
+            style: GoogleFonts.manrope(
+                fontSize: 16, fontWeight: FontWeight.w800,
+                color: AppTheme.text(isDark))),
+        const SizedBox(height: 20),
+        _SourceTile(
+          icon: Icons.camera_alt_rounded,
+          label: 'Take Photo',
+          isDark: isDark,
+          onTap: () => Navigator.pop(context, ImageSource.camera),
+        ),
+        const SizedBox(height: 10),
+        _SourceTile(
+          icon: Icons.photo_library_rounded,
+          label: 'Choose from Gallery',
+          isDark: isDark,
+          onTap: () => Navigator.pop(context, ImageSource.gallery),
+        ),
+      ]),
+    );
+  }
+}
+
+class _SourceTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isDark;
+  final VoidCallback onTap;
+  const _SourceTile({required this.icon, required this.label,
+      required this.isDark, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLow(isDark),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(children: [
+        Icon(icon, color: AppTheme.primary, size: 22),
+        const SizedBox(width: 14),
+        Text(label,
+            style: GoogleFonts.manrope(
+                fontSize: 14, fontWeight: FontWeight.w600,
+                color: AppTheme.text(isDark))),
+      ]),
+    ),
+  );
 }
 
 // ── Profile avatar widget ─────────────────────────────────────────────────────

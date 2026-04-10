@@ -14,7 +14,16 @@ class DBHelper {
 
   Future<Database> _init() async {
     final path = join(await getDatabasesPath(), 'nudge_v2.db');
-    return openDatabase(path, version: 3, onCreate: _create, onUpgrade: _migrate);
+    return openDatabase(
+      path,
+      version: 3,
+      onCreate: _create,
+      onUpgrade: _migrate,
+      onOpen: (db) async {
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_tasks_completedAt ON tasks(completedAt)');
+      },
+    );
   }
 
   Future<void> _migrate(Database db, int oldVersion, int newVersion) async {
@@ -58,6 +67,9 @@ class DBHelper {
         taskId   INTEGER
       )
     ''');
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_tasks_completedAt ON tasks(completedAt)');
   }
 
   // ── Tasks ──────────────────────────────────────────────────────────────
@@ -98,8 +110,18 @@ class DBHelper {
     await db.delete('tasks', where: 'id = ?', whereArgs: [id]);
   }
 
+  Future<void> bulkDeleteTasks(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    final placeholders = List.filled(ids.length, '?').join(',');
+    await db.delete('tasks', where: 'id IN ($placeholders)', whereArgs: ids);
+  }
+
   // ── Documents ──────────────────────────────────────────────────────────
 
+  // NOTE: Multiple document rows may share the same filePath (e.g. same file
+  // attached to different tasks). This is intentional — files are stored by
+  // reference path, not copied, to avoid disk duplication.
   Future<int> createDocument(NudgeDocument doc) async {
     final db = await database;
     final map = doc.toMap()..remove('id');
@@ -110,6 +132,20 @@ class DBHelper {
     final db = await database;
     final rows = await db.query('documents', orderBy: 'savedAt DESC');
     return rows.map(NudgeDocument.fromMap).toList();
+  }
+
+  /// Single-query replacement for getSubjects() + N×getDocumentsBySubject()
+  /// + getAllDocuments() (for uncategorised). Groups results in Dart.
+  Future<Map<String, List<NudgeDocument>>> getAllDocumentsGrouped() async {
+    final db = await database;
+    final rows = await db.query('documents', orderBy: 'subject ASC, savedAt DESC');
+    final map = <String, List<NudgeDocument>>{};
+    for (final row in rows) {
+      final doc = NudgeDocument.fromMap(row);
+      final key = doc.subject.isEmpty ? 'Uncategorised' : doc.subject;
+      (map[key] ??= []).add(doc);
+    }
+    return map;
   }
 
   Future<List<String>> getSubjects() async {
@@ -176,5 +212,16 @@ class DBHelper {
     final rows = await db.query('tasks', where: 'id = ?', whereArgs: [id]);
     if (rows.isEmpty) return null;
     return Task.fromMap(rows.first);
+  }
+
+  /// Deletes all completed tasks whose completedAt is more than 24 hours ago.
+  Future<void> deleteExpiredCompletedTasks() async {
+    final db = await database;
+    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
+    await db.delete(
+      'tasks',
+      where: 'completedAt IS NOT NULL AND completedAt < ?',
+      whereArgs: [cutoff.millisecondsSinceEpoch],
+    );
   }
 }
