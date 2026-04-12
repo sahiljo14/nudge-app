@@ -11,6 +11,8 @@ import '../parser/task_parser.dart';
 import '../theme/app_theme.dart';
 import '../database/db_helper.dart';
 import '../services/notification_service.dart';
+import '../features/voice_gate.dart';
+import '../services/voice_service.dart';
 import 'home_screen.dart';
 
 // ── Mutable task holder for multi-task preview editing ───────────────────────
@@ -70,7 +72,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   final List<_MutableTask> _multiTasks = [];          // multi-task preview
   ParsedTask? _parsed;
   bool _showReview = false;
-  bool _saving     = false;
+  bool _saving           = false;
+  bool _isListening      = false;
+  bool _voiceTransitioning = false; // true while stopListening() is awaited
+  String? _voiceError;
 
   bool get _isEditMode => widget.initialTask != null;
 
@@ -135,6 +140,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
   @override
   void dispose() {
+    // Stop mic if screen is closed mid-listening (fire-and-forget — dispose() is sync)
+    if (_isListening) VoiceService.instance.stopListening();
     _ctrl.removeListener(_onTextChanged);
     _ctrl.dispose();
     _descCtrl.dispose();
@@ -430,6 +437,85 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     return '${d.inMinutes}m before';
   }
 
+  // ── Voice input ───────────────────────────────────────────────────────────
+
+  Future<void> _onVoiceTap() async {
+    // Block re-entrant taps while a stop transition is already in progress.
+    if (_voiceTransitioning) return;
+
+    if (_isListening) {
+      // Out-of-sync guard: if the service is no longer actually listening
+      // (e.g. it crashed silently), just reset the UI without touching native.
+      if (VoiceService.instance.state != VoiceState.listening) {
+        if (mounted) setState(() { _isListening = false; _voiceError = null; });
+        return;
+      }
+
+      // Normal second-tap stop: block further taps while the await resolves.
+      if (mounted) setState(() => _voiceTransitioning = true);
+      String? capturedText;
+      try {
+        capturedText = await VoiceService.instance.stopListening();
+      } finally {
+        if (mounted) setState(() { _isListening = false; _voiceTransitioning = false; });
+      }
+      // Commit any text that was captured before the user stopped.
+      if (capturedText != null && capturedText.isNotEmpty && mounted) {
+        setState(() { _ctrl.text = capturedText!; _voiceError = null; });
+        _parse();
+      }
+      return;
+    }
+
+    VoiceGate.request(
+      onGranted: _startVoice,
+      onDenied: () {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Voice input is not available.')),
+        );
+      },
+    );
+  }
+
+  Future<void> _startVoice() async {
+    // Guard: do not start if a stop is still resolving or widget is gone.
+    if (!mounted || _voiceTransitioning) return;
+    setState(() { _isListening = true; _voiceError = null; });
+    final error = await VoiceService.instance.startListening(
+      onResult: (text) {
+        if (!mounted) return;
+        setState(() { _ctrl.text = text; _isListening = false; _voiceError = null; });
+        _parse();
+      },
+      // Live partial updates — fill the input field as the user speaks.
+      onPartialResult: (text) {
+        if (!mounted) return;
+        setState(() => _ctrl.text = text);
+      },
+      // Called on timeout, error, or silent stop — always clears listening state
+      onStop: () {
+        if (!mounted) return;
+        setState(() => _isListening = false);
+      },
+    );
+    if (error != null && mounted) {
+      // Map error strings to user-friendly messages.
+      // Covers both speech_to_text and legacy error keywords.
+      String msg = error;
+      if (error.contains('permission') || error.contains('denied') ||
+          error.contains('PERMISSION_DENIED')) {
+        msg = 'Microphone permission denied. Enable in Settings.';
+      } else if (error.contains('not available') || error.contains('INIT_FAILED') ||
+          error.contains('initialize') || error.contains('extract')) {
+        msg = 'Voice engine failed to start. Try again.';
+      } else if (error.contains('Could not') || error.contains('START_FAILED')) {
+        msg = 'Could not access microphone. Try again.';
+      }
+      setState(() { _voiceError = msg; _isListening = false; });
+    }
+  }
+
   Future<void> _save() async {
     if (!_isEditMode && _ctrl.text.trim().isEmpty) return;
     if (!_showReview) { _parse(); return; }
@@ -670,6 +756,27 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           Text('Paste', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
                         ]),
                       ),
+                      if (VoiceGate.isEnabled) ...[
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: _onVoiceTap,
+                          child: Row(children: [
+                            Icon(
+                              _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                              size: 15,
+                              color: _isListening ? AppTheme.primary : Colors.grey.shade400,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _isListening ? 'Listening…' : 'Voice',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _isListening ? AppTheme.primary : Colors.grey.shade400,
+                              ),
+                            ),
+                          ]),
+                        ),
+                      ],
                       const Spacer(),
                       GestureDetector(
                         onTap: _parse,
@@ -687,6 +794,19 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   ),
                 ]),
               ),
+
+              // Voice error banner (shown below input box, clears on next action)
+              if (_voiceError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _voiceError!,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFFB80438),
+                    height: 1.4,
+                  ),
+                ),
+              ],
 
               // Example chips
               if (!_showReview) ...[

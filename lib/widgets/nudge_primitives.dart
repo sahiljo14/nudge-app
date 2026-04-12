@@ -290,7 +290,8 @@ class NudgeSearchBar extends StatelessWidget {
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,
-              filled: false,
+              filled: true,
+              fillColor: Colors.transparent,
               contentPadding:
                   const EdgeInsets.symmetric(vertical: 14),
               isDense: true,

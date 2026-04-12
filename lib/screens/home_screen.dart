@@ -58,6 +58,17 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  // Updates the active icon immediately and then animates the page.
+  // Using setState before animateToPage ensures the dock highlight
+  // switches on tap, not at the end of the 300 ms animation.
+  void _goToPage(int i) {
+    if (!mounted) return;
+    setState(() => _navIndex = i);
+    _pageController.animateToPage(i,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic);
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     await DBHelper.instance.deleteExpiredCompletedTasks();
@@ -229,11 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
           userName: _userName,
           profileImagePath: _profileImagePath,
           totalXp: _totalXp,
-          onSearchTap: () => _pageController.animateToPage(
-            1,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-          ),
+          onSearchTap: () => _goToPage(1),
           onProfileTap: () async {
             await Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ProfileScreen()));
@@ -286,14 +293,10 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 _NavItem(icon: Icons.home_rounded, label: 'Home',
                     active: _navIndex == 0,
-                    onTap: () => _pageController.animateToPage(0,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutCubic)),
+                    onTap: () => _goToPage(0)),
                 _NavItem(icon: Icons.task_alt_rounded, label: 'Tasks',
                     active: _navIndex == 1,
-                    onTap: () => _pageController.animateToPage(1,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutCubic)),
+                    onTap: () => _goToPage(1)),
                 // Centre + button — round, inline, same height as nav items
                 GestureDetector(
                   onTap: _addTask,
@@ -317,14 +320,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 _NavItem(icon: Icons.folder_rounded, label: 'Docs',
                     active: _navIndex == 2,
-                    onTap: () => _pageController.animateToPage(2,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutCubic)),
+                    onTap: () => _goToPage(2)),
                 _NavItem(icon: Icons.settings_rounded, label: 'Settings',
                     active: _navIndex == 3,
-                    onTap: () => _pageController.animateToPage(3,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutCubic)),
+                    onTap: () => _goToPage(3)),
               ],
             ),
           ),
@@ -1141,6 +1140,13 @@ class _HomeSearchFloat extends StatelessWidget {
                   decoration: InputDecoration(
                     hintText: 'Search tasks, files, subjects…',
                     border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                    filled: true,
+                    fillColor: Colors.transparent,
                     contentPadding: const EdgeInsets.symmetric(vertical: 16),
                     isDense: true,
                     hintStyle: GoogleFonts.manrope(
