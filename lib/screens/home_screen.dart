@@ -19,8 +19,11 @@ import '../widgets/nudge_primitives.dart';
 import '../widgets/task_card.dart';
 import 'add_task_screen.dart';
 import 'calendar_screen.dart';
+import 'ocr_scan_screen.dart';
 import 'profile_screen.dart';
+import '../features/voice_gate.dart';
 import '../services/user_prefs.dart';
+import '../services/voice_service.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HOME SCREEN — bottom nav shell
@@ -117,14 +120,182 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _addTask() async {
     HapticFeedback.lightImpact();
-    await Navigator.of(context).push(PageRouteBuilder(
-      pageBuilder: (_, a, __) => const AddTaskScreen(),
-      transitionsBuilder: (_, anim, __, child) => SlideTransition(
-        position: Tween(begin: const Offset(0, 1), end: Offset.zero)
-            .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-        child: child,
-      ),
-    ));
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+        final maxSheetHeight = MediaQuery.of(ctx).size.height * 0.75;
+        return SafeArea(
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 150),
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxSheetHeight),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(ctx).scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24)),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 40, height: 4,
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFDDDDE8),
+                          borderRadius: BorderRadius.circular(2)),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('Add new',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800,
+                            color: Color(0xFF1A1A2E), letterSpacing: -0.5)),
+                    const SizedBox(height: 20),
+                    _AddOptionTile(
+                      icon: Icons.edit_note_rounded,
+                      title: 'Type a task',
+                      subtitle: 'Describe your task in natural language',
+                      onTap: () => Navigator.pop(ctx, 'type'),
+                    ),
+                    const SizedBox(height: 12),
+                    _AddOptionTile(
+                      icon: Icons.document_scanner_rounded,
+                      title: 'Scan Image (OCR)',
+                      subtitle: 'Extract text from a photo or screenshot',
+                      onTap: () => Navigator.pop(ctx, 'scan'),
+                    ),
+                    if (VoiceGate.isEnabled) ...[
+                      const SizedBox(height: 12),
+                      _AddOptionTile(
+                        icon: Icons.mic_rounded,
+                        title: 'Voice input',
+                        subtitle: 'Speak your task to add it instantly',
+                        onTap: () => Navigator.pop(ctx, 'voice'),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (choice == null || !mounted) return;
+    if (choice == 'scan') {
+      await Navigator.of(context).push(PageRouteBuilder(
+        pageBuilder: (_, a, __) => const OcrScanScreen(),
+        transitionsBuilder: (_, anim, __, child) => SlideTransition(
+          position: Tween(begin: const Offset(0, 1), end: Offset.zero)
+              .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+      ));
+    } else if (choice == 'voice') {
+      // Voice-first: capture speech in a modal, then navigate to create screen.
+      String? voicePartial;
+      bool voiceStarted = false;
+      final recognizedText = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isDismissible: true,
+        enableDrag: false,
+        builder: (sheetCtx) => StatefulBuilder(
+          builder: (ctx, setSheet) {
+            if (!voiceStarted) {
+              voiceStarted = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                final err = await VoiceService.instance.startListening(
+                  onResult: (text) {
+                    if (ctx.mounted) Navigator.pop(ctx, text);
+                  },
+                  onPartialResult: (text) =>
+                      setSheet(() => voicePartial = text),
+                  onStop: () {
+                    if (ctx.mounted) Navigator.pop(ctx, null);
+                  },
+                );
+                if (err != null && ctx.mounted) Navigator.pop(ctx, null);
+              });
+            }
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDDDDE8),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                const Icon(Icons.mic_rounded,
+                    size: 52, color: AppTheme.primary),
+                const SizedBox(height: 16),
+                const Text('Listening…',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1A1A2E))),
+                const SizedBox(height: 8),
+                Text(
+                  (voicePartial != null && voicePartial!.isNotEmpty)
+                      ? voicePartial!
+                      : 'Speak your task now',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade500,
+                      height: 1.4),
+                ),
+                const SizedBox(height: 28),
+                TextButton(
+                  onPressed: () async {
+                    await VoiceService.instance.stopListening();
+                    if (ctx.mounted) Navigator.pop(ctx, null);
+                  },
+                  child: const Text('Cancel',
+                      style: TextStyle(color: Color(0xFF888899))),
+                ),
+              ]),
+            );
+          },
+        ),
+      );
+      // Always ensure voice is stopped (handles swipe-to-dismiss case).
+      await VoiceService.instance.stopListening();
+      if (recognizedText != null &&
+          recognizedText.trim().isNotEmpty &&
+          mounted) {
+        await Navigator.of(context).push(PageRouteBuilder(
+          pageBuilder: (_, a, __) =>
+              AddTaskScreen(prefill: recognizedText.trim()),
+          transitionsBuilder: (_, anim, __, child) => SlideTransition(
+            position: Tween(begin: const Offset(0, 1), end: Offset.zero)
+                .animate(CurvedAnimation(
+                    parent: anim, curve: Curves.easeOutCubic)),
+            child: child,
+          ),
+        ));
+      }
+    } else {
+      await Navigator.of(context).push(PageRouteBuilder(
+        pageBuilder: (_, a, __) => const AddTaskScreen(),
+        transitionsBuilder: (_, anim, __, child) => SlideTransition(
+          position: Tween(begin: const Offset(0, 1), end: Offset.zero)
+              .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+      ));
+    }
     await _load();
   }
 
@@ -3012,4 +3183,58 @@ class _CelebrationSheet extends StatelessWidget {
       ),
     ]),
   );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADD OPTION TILE — used in the "Add new" bottom sheet
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _AddOptionTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  const _AddOptionTile({
+    required this.icon, required this.title,
+    required this.subtitle, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.card(isDark),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border(isDark)),
+        ),
+        child: Row(children: [
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: AppTheme.primary, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: GoogleFonts.manrope(
+                  fontSize: 15, fontWeight: FontWeight.w700,
+                  color: AppTheme.text(isDark))),
+              const SizedBox(height: 2),
+              Text(subtitle, style: TextStyle(
+                  fontSize: 12, color: AppTheme.subtext(isDark))),
+            ],
+          )),
+          Icon(Icons.arrow_forward_ios_rounded,
+              size: 14, color: AppTheme.subtext(isDark)),
+        ]),
+      ),
+    );
+  }
 }

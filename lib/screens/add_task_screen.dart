@@ -1,5 +1,6 @@
 // lib/screens/add_task_screen.dart
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -58,7 +59,8 @@ class _Reminder {
 class AddTaskScreen extends StatefulWidget {
   final String prefill;
   final Task? initialTask; // non-null → edit mode
-  const AddTaskScreen({super.key, this.prefill = '', this.initialTask});
+  final bool autoVoice;   // true → start voice capture on screen open
+  const AddTaskScreen({super.key, this.prefill = '', this.initialTask, this.autoVoice = false});
   @override
   State<AddTaskScreen> createState() => _AddTaskScreenState();
 }
@@ -76,6 +78,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   bool _isListening      = false;
   bool _voiceTransitioning = false; // true while stopListening() is awaited
   String? _voiceError;
+  Timer? _watchdogTimer; // auto-stops if no speech within 2.7 s of start
 
   bool get _isEditMode => widget.initialTask != null;
 
@@ -129,6 +132,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         confidence:    1.0,
       );
       _showReview = true;
+    } else if (widget.autoVoice && VoiceGate.isEnabled) {
+      // Opened via Voice option in the plus menu — start listening immediately.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _startVoice());
     } else if (widget.prefill.isNotEmpty) {
       _ctrl.text = widget.prefill;
       WidgetsBinding.instance.addPostFrameCallback((_) => _parse());
@@ -136,10 +142,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
     }
     _ctrl.addListener(_onTextChanged);
+    // Warm up the speech engine so the first tap starts instantly.
+    if (VoiceGate.isEnabled) VoiceService.instance.init();
   }
 
   @override
   void dispose() {
+    _watchdogTimer?.cancel();
     // Stop mic if screen is closed mid-listening (fire-and-forget — dispose() is sync)
     if (_isListening) VoiceService.instance.stopListening();
     _ctrl.removeListener(_onTextChanged);
@@ -167,6 +176,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _priority   = r.priority;
       _taskType   = r.taskType;
       _subject    = r.subject;
+      _nameCtrl.text = r.taskName;
       _showReview = true;
       // Populate mutable task list for multi-task preview
       for (final t in _multiTasks) t.dispose();
@@ -451,7 +461,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         return;
       }
 
-      // Normal second-tap stop: block further taps while the await resolves.
+      // Normal second-tap stop: cancel watchdog and block further taps.
+      _watchdogTimer?.cancel();
+      _watchdogTimer = null;
       if (mounted) setState(() => _voiceTransitioning = true);
       String? capturedText;
       try {
@@ -484,17 +496,22 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     setState(() { _isListening = true; _voiceError = null; });
     final error = await VoiceService.instance.startListening(
       onResult: (text) {
+        _watchdogTimer?.cancel();
+        _watchdogTimer = null;
         if (!mounted) return;
         setState(() { _ctrl.text = text; _isListening = false; _voiceError = null; });
         _parse();
       },
-      // Live partial updates — fill the input field as the user speaks.
+      // Live partial updates — first non-empty partial cancels the no-speech watchdog.
       onPartialResult: (text) {
+        if (text.isNotEmpty) { _watchdogTimer?.cancel(); _watchdogTimer = null; }
         if (!mounted) return;
         setState(() => _ctrl.text = text);
       },
-      // Called on timeout, error, or silent stop — always clears listening state
+      // Called on timeout, error, or silent stop — always clears listening state.
       onStop: () {
+        _watchdogTimer?.cancel();
+        _watchdogTimer = null;
         if (!mounted) return;
         setState(() => _isListening = false);
       },
@@ -513,6 +530,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         msg = 'Could not access microphone. Try again.';
       }
       setState(() { _voiceError = msg; _isListening = false; });
+    } else if (error == null && mounted) {
+      // Listening started — auto-stop if user says nothing within 2.7 s.
+      _watchdogTimer = Timer(const Duration(milliseconds: 2700), () async {
+        if (!mounted || !_isListening || _voiceTransitioning) return;
+        setState(() => _voiceTransitioning = true);
+        await VoiceService.instance.stopListening();
+        if (mounted) setState(() { _isListening = false; _voiceTransitioning = false; });
+      });
     }
   }
 
@@ -579,8 +604,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         }
       }
     } else {
-      // Single-task path
-      final taskName = _parsed?.taskName ?? _ctrl.text.trim();
+      // Single-task path — prefer user-edited name from _nameCtrl
+      final nameOverride = _nameCtrl.text.trim();
+      final taskName = nameOverride.isNotEmpty
+          ? nameOverride
+          : (_parsed?.taskName ?? _ctrl.text.trim());
       final task = Task(
         name:          taskName.isNotEmpty ? taskName : _ctrl.text.trim(),
         deadline:      _deadline,
@@ -758,23 +786,40 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       ),
                       if (VoiceGate.isEnabled) ...[
                         const SizedBox(width: 12),
-                        GestureDetector(
-                          onTap: _onVoiceTap,
-                          child: Row(children: [
-                            Icon(
-                              _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                              size: 15,
-                              color: _isListening ? AppTheme.primary : Colors.grey.shade400,
+                        Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          child: InkWell(
+                            onTap: _voiceTransitioning ? null : _onVoiceTap,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 6),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(
+                                  _isListening
+                                      ? Icons.mic_rounded
+                                      : Icons.mic_none_rounded,
+                                  size: 16,
+                                  color: _isListening
+                                      ? AppTheme.primary
+                                      : Colors.grey.shade400,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _voiceTransitioning
+                                      ? 'Stopping…'
+                                      : (_isListening ? 'Listening…' : 'Voice'),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: _isListening
+                                        ? AppTheme.primary
+                                        : Colors.grey.shade400,
+                                  ),
+                                ),
+                              ]),
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _isListening ? 'Listening…' : 'Voice',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: _isListening ? AppTheme.primary : Colors.grey.shade400,
-                              ),
-                            ),
-                          ]),
+                          ),
                         ),
                       ],
                       const Spacer(),
@@ -859,6 +904,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   _ReviewCard(
                     parsed: _parsed!, deadline: _deadline,
                     priority: _priority, taskType: _taskType, subject: _subject,
+                    nameCtrl:         _nameCtrl,
                     onPickDeadline:   _pickDeadline,
                     onPriorityChange: (v) => setState(() => _priority = v),
                     onTypeChange:     (v) => setState(() => _taskType = v),
@@ -1000,12 +1046,14 @@ class _ReviewCard extends StatelessWidget {
   final ParsedTask parsed;
   final DateTime deadline;
   final String priority, taskType, subject;
+  final TextEditingController nameCtrl;
   final VoidCallback onPickDeadline;
   final ValueChanged<String> onPriorityChange, onTypeChange, onSubjectChange;
 
   const _ReviewCard({
     required this.parsed, required this.deadline,
     required this.priority, required this.taskType, required this.subject,
+    required this.nameCtrl,
     required this.onPickDeadline, required this.onPriorityChange,
     required this.onTypeChange, required this.onSubjectChange,
   });
@@ -1039,9 +1087,18 @@ class _ReviewCard extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(parsed.taskName,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A2E), letterSpacing: -0.4)),
+            TextField(
+              controller: nameCtrl,
+              textCapitalization: TextCapitalization.sentences,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A1A2E), letterSpacing: -0.4),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+                hintText: 'Task name',
+              ),
+            ),
             const SizedBox(height: 14),
             Wrap(spacing: 8, runSpacing: 8, children: [
               GestureDetector(

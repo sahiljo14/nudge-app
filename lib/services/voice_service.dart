@@ -1,10 +1,8 @@
 // lib/services/voice_service.dart
 //
 // Flutter wrapper around the speech_to_text plugin (Android SpeechRecognizer).
-// Replaces the previous Vosk MethodChannel / EventChannel implementation.
 //
-// Public API is identical to the previous version so add_task_screen.dart
-// requires only minimal wiring changes:
+// Public API
 //   VoiceState enum
 //   VoiceService.instance  — singleton
 //   init()                 — optional; startListening() calls it automatically
@@ -23,7 +21,21 @@
 //   _state is set to VoiceState.ready and callbacks are cleared BEFORE
 //   _speech.stop() is called.  All result/status/error callbacks check _state
 //   first, so manual-stop never double-fires onResult.
+//
+// MID-SPEECH STOP FIX
+//   Android's SpeechRecognizer fires 'done' status between internal recognition
+//   bursts during dictation, not only at genuine end-of-speech.  The old code
+//   committed text immediately on every 'done', cutting off mid-phrase.
+//
+//   Fix: _onStatus debounces the 'done'/'notListening' reaction:
+//     • If no speech has been detected yet (_speechDetected == false) → stop
+//       immediately (pure silence; avoids adding delay to no-speech case).
+//     • If speech was detected → start a 400 ms timer.  If a new partial
+//       result arrives within that window (plugin restarted the session), the
+//       timer is cancelled and dictation continues.  If the timer fires with
+//       no new partial, we commit whatever text was captured.
 
+import 'dart:async';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
@@ -46,6 +58,15 @@ class VoiceService {
   /// The latest recognized words (partial or committed).
   /// Returned by stopListening() when the user manually stops mid-phrase.
   String _currentText = '';
+
+  /// True once the first non-empty partial result arrives in the current session.
+  /// Used by _onStatus to distinguish mid-burst 'done' (debounce) from
+  /// genuine silence 'done' (immediate stop).
+  bool _speechDetected = false;
+
+  /// Debounce timer: started on 'done'/'notListening' when speech was already
+  /// detected.  Cancelled if a new partial arrives before it fires.
+  Timer? _statusDebounce;
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -102,6 +123,9 @@ class VoiceService {
     _onPartialResult = onPartialResult;
     _onStop = onStop;
     _currentText = '';
+    _speechDetected = false;
+    _statusDebounce?.cancel();
+    _statusDebounce = null;
 
     try {
       await _speech.listen(
@@ -134,29 +158,67 @@ class VoiceService {
     _currentText = result.recognizedWords;
 
     if (result.finalResult) {
-      final text = _currentText.trim();
-      final cb = _onResult;
-      final stopCb = _onStop;
-      _onResult = null;
-      _onPartialResult = null;
-      _onStop = null;
-      _currentText = '';
-      _state = VoiceState.ready;
-      if (text.isNotEmpty) {
-        cb?.call(text);
-      } else {
-        stopCb?.call();
-      }
+      // Cancel any pending debounce — finalResult is the authoritative signal.
+      _statusDebounce?.cancel();
+      _statusDebounce = null;
+      _commitOrStop();
     } else {
-      // Partial — update live text in the UI.
+      // Partial result — user is still speaking.
       final partial = _currentText;
-      if (partial.isNotEmpty) _onPartialResult?.call(partial);
+      if (partial.isNotEmpty) {
+        // First detected speech: mark and cancel any pending 'done' debounce
+        // so the plugin's internal session restart doesn't prematurely stop us.
+        _speechDetected = true;
+        _statusDebounce?.cancel();
+        _statusDebounce = null;
+        _onPartialResult?.call(partial);
+      }
     }
   }
 
   void _onError(SpeechRecognitionError error) {
     if (_state != VoiceState.listening) return;
-    // Deliver whatever text was captured before the error.
+    _statusDebounce?.cancel();
+    _statusDebounce = null;
+    _commitOrStop();
+  }
+
+  void _onStatus(String status) {
+    // 'done' / 'notListening' can mean either:
+    //   (a) a genuine end-of-speech / silence timeout, or
+    //   (b) the end of one internal recognition burst before the plugin
+    //       restarts the session (common in dictation mode on Android).
+    //
+    // We distinguish them with _speechDetected:
+    //   • No speech yet  → stop immediately (genuine silence).
+    //   • Speech detected → debounce 400 ms.  If a new partial arrives
+    //     (plugin restarted), the debounce is cancelled in _handleResult.
+    //     If the timer fires, commit whatever text we have.
+    if (_state != VoiceState.listening) return;
+    if (status != 'done' && status != 'notListening') return;
+
+    _statusDebounce?.cancel();
+    _statusDebounce = null;
+
+    if (!_speechDetected) {
+      // Pure silence — no speech was detected at all.  Stop immediately.
+      _commitOrStop();
+    } else {
+      // Speech was in progress.  Give the plugin 400 ms to fire a new partial
+      // (session restart) before treating this as a genuine end-of-speech.
+      _statusDebounce = Timer(const Duration(milliseconds: 400), () {
+        _statusDebounce = null;
+        if (_state != VoiceState.listening) return;
+        _commitOrStop();
+      });
+    }
+  }
+
+  // ── Shared commit/stop logic ──────────────────────────────────────────────
+
+  /// Commit captured text via onResult, or signal silence via onStop.
+  /// Clears all session state before firing callbacks (double-delivery guard).
+  void _commitOrStop() {
     final text = _currentText.trim();
     final cb = _onResult;
     final stopCb = _onStop;
@@ -164,33 +226,12 @@ class VoiceService {
     _onPartialResult = null;
     _onStop = null;
     _currentText = '';
+    _speechDetected = false;
     _state = VoiceState.ready;
     if (text.isNotEmpty) {
       cb?.call(text);
     } else {
       stopCb?.call();
-    }
-  }
-
-  void _onStatus(String status) {
-    // 'done' / 'notListening' means the recognizer stopped without firing a
-    // finalResult event (common on some Android devices on timeout).
-    // The _state guard prevents double-firing after a manual stop.
-    if (_state != VoiceState.listening) return;
-    if (status == 'done' || status == 'notListening') {
-      final text = _currentText.trim();
-      final cb = _onResult;
-      final stopCb = _onStop;
-      _onResult = null;
-      _onPartialResult = null;
-      _onStop = null;
-      _currentText = '';
-      _state = VoiceState.ready;
-      if (text.isNotEmpty) {
-        cb?.call(text);
-      } else {
-        stopCb?.call();
-      }
     }
   }
 
@@ -200,8 +241,12 @@ class VoiceService {
   /// Returns the best-effort transcript captured so far (for manual-stop UX),
   /// or null if nothing was captured.
   Future<String?> stopListening() async {
+    _statusDebounce?.cancel();
+    _statusDebounce = null;
+
     final savedText = _currentText.trim();
     _currentText = '';
+    _speechDetected = false;
 
     if (_state != VoiceState.listening) {
       _onResult = null;
