@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nudge — Never miss a deadline again</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1a1a1a;
+    background: linear-gradient(135deg, #f6f8fb 0%, #eef1f7 100%);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+  }
+  .card {
+    width: 100%;
+    max-width: 640px;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 48px 32px;
+    box-shadow: 0 10px 40px rgba(20, 30, 60, 0.08);
+    text-align: center;
+  }
+  h1 {
+    font-size: 2.4rem;
+    margin-bottom: 8px;
+    letter-spacing: -0.02em;
+  }
+  .tagline {
+    font-size: 1.1rem;
+    color: #4a5568;
+    margin-bottom: 28px;
+    font-weight: 500;
+  }
+  .description {
+    font-size: 1rem;
+    line-height: 1.65;
+    color: #2d3748;
+    margin-bottom: 36px;
+    text-align: left;
+  }
+  .buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+  }
+  .btn {
+    display: inline-block;
+    padding: 12px 24px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .btn-primary {
+    background: #2563eb;
+    color: #ffffff;
+  }
+  .btn-secondary {
+    background: #edf2f7;
+    color: #1a202c;
+  }
+  .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+  footer {
+    text-align: center;
+    padding: 24px 20px;
+    color: #718096;
+    font-size: 0.875rem;
+  }
+  @media (max-width: 480px) {
+    .card { padding: 32px 20px; }
+    h1 { font-size: 1.9rem; }
+    .tagline { font-size: 1rem; }
+    .description { font-size: 0.95rem; }
+    .btn { padding: 11px 20px; font-size: 0.9rem; }
+  }
+</style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <h1>Nudge 🔔</h1>
+      <p class="tagline">Never miss a deadline again.</p>
+      <p class="description">
+        Smart task manager for students. Understands natural language including Hinglish and Marathi. Share any message directly into Nudge — it extracts the task and deadline automatically. Works fully offline. No account needed.
+      </p>
+      <div class="buttons">
+        <a class="btn btn-primary" href="privacy-policy.html">Privacy Policy</a>
+        <a class="btn btn-secondary" href="support.html">Support</a>
+      </div>
+    </div>
+  </main>
+  <footer>© 2025 Sahil. All rights reserved.</footer>
+</body>
+</html>
