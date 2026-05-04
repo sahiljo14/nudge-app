@@ -11,6 +11,7 @@ class UserPrefs {
   static const _keyUserSubjects     = 'user_subjects';
   static const _keyProfileImagePath = 'profile_image_path';
   static const _keyTotalXp          = 'total_xp';
+  static const _keyThemeMode        = 'theme_mode';
 
   // ── Onboarding gate ───────────────────────────────────────────────────────
 
@@ -91,5 +92,18 @@ class UserPrefs {
     final p = await SharedPreferences.getInstance();
     final current = p.getInt(_keyTotalXp) ?? 0;
     await p.setInt(_keyTotalXp, current + amount);
+  }
+
+  // ── Theme mode persistence ────────────────────────────────────────────────────
+
+  /// Returns 'dark', 'light', or null (system default).
+  static Future<String?> getThemeMode() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(_keyThemeMode);
+  }
+
+  static Future<void> setThemeMode(String mode) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_keyThemeMode, mode);
   }
 }

@@ -1,7 +1,6 @@
 // lib/screens/home_screen.dart
 
 import 'dart:io' as import_dart_io;
-import 'dart:ui';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +14,7 @@ import '../models/task.dart';
 import '../models/document.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/streak_utils.dart' as streak_utils;
 import '../widgets/nudge_primitives.dart';
 import '../widgets/task_card.dart';
 import 'add_task_screen.dart';
@@ -73,7 +73,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    // Note: do not flip `_loading` to true here. The field initializer
+    // (`_loading = true`) already gates the spinner for the first mount,
+    // and the trailing setState flips it to false once the first load
+    // completes. On subsequent refreshes (toggle/delete) the PageView must
+    // stay mounted — unmounting it caused the controller to snap back to
+    // page 0 while `_navIndex` (the dock highlight) stayed unchanged.
     await DBHelper.instance.deleteExpiredCompletedTasks();
     final userName         = await UserPrefs.getUserName();
     final profileImagePath = await UserPrefs.getProfileImagePath();
@@ -86,25 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return t.deadline.isBefore(DateTime(now.year, now.month, now.day + 1));
     }).toList();
     // Compute streak once here so _showCelebration can read it without re-looping.
-    bool _sameDay(DateTime a, DateTime b) =>
-        a.year == b.year && a.month == b.month && a.day == b.day;
-    DateTime? _completionDay(Task t) {
-      if (!t.isDone) return null;
-      final dt = t.completedAt ?? t.deadline;
-      return DateTime(dt.year, dt.month, dt.day);
-    }
-    final streakNow = DateTime.now();
-    final streakToday = DateTime(streakNow.year, streakNow.month, streakNow.day);
-    int computedStreak = 0;
-    if (all.any((t) { final d = _completionDay(t); return d != null && _sameDay(d, streakToday); })) computedStreak++;
-    for (int i = 1; i < 365; i++) {
-      final day = streakToday.subtract(Duration(days: i));
-      if (all.any((t) { final d = _completionDay(t); return d != null && _sameDay(d, day); })) {
-        computedStreak++;
-      } else {
-        break;
-      }
-    }
+    final computedStreak = streak_utils.currentStreak(all);
 
     if (mounted) setState(() {
       _todayTasks = today; _allTasks = all;
@@ -205,6 +192,8 @@ class _HomeScreenState extends State<HomeScreen> {
         enableDrag: false,
         builder: (sheetCtx) => StatefulBuilder(
           builder: (ctx, setSheet) {
+            final isDark =
+                Theme.of(ctx).brightness == Brightness.dark;
             if (!voiceStarted) {
               voiceStarted = true;
               WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -222,17 +211,17 @@ class _HomeScreenState extends State<HomeScreen> {
               });
             }
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: AppTheme.card(isDark),
+                borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24)),
               ),
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(
                   width: 40, height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDDDDE8),
+                    color: AppTheme.border(isDark),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -240,11 +229,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 const Icon(Icons.mic_rounded,
                     size: 52, color: AppTheme.primary),
                 const SizedBox(height: 16),
-                const Text('Listening…',
+                Text('Listening…',
                     style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF1A1A2E))),
+                        color: AppTheme.text(isDark))),
                 const SizedBox(height: 8),
                 Text(
                   (voicePartial != null && voicePartial!.isNotEmpty)
@@ -253,7 +242,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey.shade500,
+                      color: AppTheme.subtext(isDark),
                       height: 1.4),
                 ),
                 const SizedBox(height: 28),
@@ -262,8 +251,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     await VoiceService.instance.stopListening();
                     if (ctx.mounted) Navigator.pop(ctx, null);
                   },
-                  child: const Text('Cancel',
-                      style: TextStyle(color: Color(0xFF888899))),
+                  child: Text('Cancel',
+                      style: TextStyle(color: AppTheme.subtext(isDark))),
                 ),
               ]),
             );
@@ -372,14 +361,14 @@ class _HomeScreenState extends State<HomeScreen> {
     await _load();
   }
 
-  void _openTaskDetail(Task task) {
-    Navigator.of(context)
+  Future<void> _openTaskDetail(Task task) {
+    return Navigator.of(context)
         .push(MaterialPageRoute(
       builder: (_) => TaskDetailScreen(
         task: task,
         onToggle: () async {
+          Navigator.pop(context);
           await _toggleDone(task);
-          if (mounted) Navigator.pop(context);
         },
         onDelete: () async {
           final ok = await _confirmDelete(context, task.name);
@@ -602,80 +591,11 @@ class _TodayTabState extends State<_TodayTab> {
   late int _cachedStreak;
   late int _cachedBest;
 
-  static bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  static DateTime? _completionDay(Task t) {
-    if (!t.isDone) return null;
-    final dt = t.completedAt ?? t.deadline;
-    return DateTime(dt.year, dt.month, dt.day);
-  }
-
   void _recompute() {
-    final now   = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    // 28-day heatmap
-    final map = <DateTime, int>{};
-    for (int i = 27; i >= 0; i--) {
-      map[today.subtract(Duration(days: i))] = 0;
-    }
-    for (final t in widget.allTasks) {
-      if (!t.isDone) continue;
-      final dt  = t.completedAt ?? t.deadline;
-      final day = DateTime(dt.year, dt.month, dt.day);
-      if (map.containsKey(day)) map[day] = (map[day]! + 1).clamp(0, 5);
-    }
-    _cachedHeatmap = map;
-
-    // Today-done count
-    _cachedTodayDone = widget.allTasks
-        .where((t) {
-      final d = _completionDay(t);
-      return d != null && _sameDay(d, today);
-    })
-        .length;
-
-    // Current streak
-    int streak = 0;
-    if (widget.allTasks.any((t) {
-      final d = _completionDay(t);
-      return d != null && _sameDay(d, today);
-    })) streak++;
-    for (int i = 1; i < 365; i++) {
-      final day = today.subtract(Duration(days: i));
-      if (widget.allTasks.any((t) {
-        final d = _completionDay(t);
-        return d != null && _sameDay(d, day);
-      })) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-    _cachedStreak = streak;
-
-    // Best streak
-    final doneDays = <DateTime>{};
-    for (final t in widget.allTasks) {
-      final d = _completionDay(t);
-      if (d != null) doneDays.add(d);
-    }
-    if (doneDays.isEmpty) {
-      _cachedBest = 0;
-    } else {
-      final sorted = doneDays.toList()..sort();
-      int best = 1, cur = 1;
-      for (int i = 1; i < sorted.length; i++) {
-        if (sorted[i].difference(sorted[i - 1]).inDays == 1) {
-          cur++;
-          if (cur > best) best = cur;
-        } else {
-          cur = 1;
-        }
-      }
-      _cachedBest = best;
-    }
+    _cachedHeatmap   = streak_utils.heatmapByDay(widget.allTasks, days: 28);
+    _cachedTodayDone = streak_utils.todayDoneCount(widget.allTasks);
+    _cachedStreak    = streak_utils.currentStreak(widget.allTasks);
+    _cachedBest      = streak_utils.bestStreak(widget.allTasks);
   }
 
   @override
@@ -2232,6 +2152,7 @@ class _SettingsTabState extends State<_SettingsTab> {
                   onChanged: (v) {
                     themeNotifier.value =
                     v ? ThemeMode.dark : ThemeMode.light;
+                    UserPrefs.setThemeMode(v ? 'dark' : 'light');
                   },
                 ),
               ),

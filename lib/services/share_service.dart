@@ -34,7 +34,6 @@ class ShareData {
 class ShareService {
   ShareService._();
   static const _ch = MethodChannel('com.nudge.app/share');
-  static const _copyCh = MethodChannel('com.nudge.app/copy_uri');
 
   static Future<ShareData> getSharedData() async {
     try {

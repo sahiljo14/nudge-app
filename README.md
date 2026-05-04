@@ -1,72 +1,65 @@
 # Nudge
 
-> Never miss a deadline again.
+> Your deadline brain. Never miss what matters.
 
-Nudge is a smart task manager built for students. Share a message, paste a screenshot, or type it yourself — Nudge extracts the task, figures out the deadline, and reminds you before it's too late.
+Nudge is an offline-first Flutter app for students. It converts unstructured text from messages, screenshots, and shared documents into clean tasks with deadlines and reminders - all on-device.
 
-It works with how students actually communicate. Plain English, Hinglish, Marathi in English script, vague deadlines — Nudge handles all of it.
+## Highlights
 
-## The Problem
+- Smart parser for English, Hinglish, and Marathi (English script)
+- Share intent support for text and files
+- OCR-based extraction from images/screenshots (Google ML Kit)
+- Calendar and task views with priority-aware reminders
+- Local SQLite storage and local notifications
+- Voice input and dark mode support
 
-Students get academic information from everywhere — messages, screenshots, PDFs, college portals. It's unstructured, easy to lose, and hard to act on. Deadlines get missed. Assignments get forgotten.
+## Example inputs
 
-## The Solution
+- `kal submit karna hai` -> Due tomorrow
+- `udya report dena ahe` -> Due tomorrow
+- `submit by next Monday` -> Due next Monday
 
-Nudge turns any unstructured input into a clean, organized task with a deadline and a reminder. No manual formatting. No extra effort.
-
-## Features
-
-- Input from messages, screenshots, or manual entry
-- Auto-extracts task name, deadline, and priority
-- Understands natural language including Hinglish and Marathi in English
-  - "kal submit karna hai" → Due: Tomorrow
-  - "udya report dena ahe" → Due: Tomorrow
-  - "submit by next Monday" → Due: Next Monday
-- Offline-first — works without internet
-- Local reminders before every deadline
-- Clean, fast, minimal UI built for students
-
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |---|---|
 | Frontend | Flutter (Dart) |
-| Local Database | SQLite via sqflite |
-| OCR | Google ML Kit |
-| NLP Parser | Rule-based + AI fallback |
-| Platform | Android (iOS ready) |
+| Local database | SQLite (`sqflite`) |
+| OCR | Google ML Kit text recognition |
+| NLP parsing | Custom rule-based parser |
+| Notifications | `flutter_local_notifications` + `timezone` |
+| Platform | Android (iOS/macOS/web/windows/linux scaffolding included) |
 
-## Roadmap
+## Project status
 
-- [x] Phase 1 — Project setup and local SQLite storage
-- [x] Phase 2 — Manual task input with deadline picker
-- [x] Phase 3 — Share intent and message input
-- [x] Phase 4 — Smart Hinglish parser and date resolver
-- [ ] Phase 5 — OCR from screenshots
-- [ ] Phase 6 — Local push notifications
-- [ ] Phase 7 — Cloud sync (optional)
+- [x] Phase 1 - Core app setup + local database
+- [x] Phase 2 - Manual task creation
+- [x] Phase 3 - Share intent import
+- [x] Phase 4 - Hinglish/Marathi deadline parsing
+- [x] Phase 5 - OCR flow for images/screenshots
+- [x] Phase 6 - Local deadline reminders
+- [ ] Phase 7 - Optional cloud sync
 
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
-- Flutter SDK 3.x or above
-- Android Studio (for Android SDK and emulator)
-- Android device or emulator running API 21+
+- Flutter SDK 3.x+
+- Android Studio (SDK + emulator) or a physical Android device
 
 ### Run locally
+
 ```bash
 git clone https://github.com/sahiljo14/nudge-app.git
 cd nudge-app
 flutter pub get
+flutter analyze
+flutter test
 flutter run
 ```
 
 ## License
 
-MIT License — free to use, modify, and distribute.
-
----
+MIT License.
 
 Built by a student, for students.
->>>>>>> add7baaee39c81038b481f2c0f18f56b11d12f16

@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../database/db_helper.dart';
 import '../models/task.dart';
 import '../theme/app_theme.dart';
 import '../widgets/task_card.dart';
@@ -29,6 +30,7 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _focusedMonth;
   DateTime? _selectedDay;
+  List<Task> _tasks = [];
 
   @override
   void initState() {
@@ -36,12 +38,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final now = DateTime.now();
     _focusedMonth = DateTime(now.year, now.month);
     _selectedDay  = DateTime(now.year, now.month, now.day);
+    _tasks = widget.tasks;
+  }
+
+  Future<void> _reloadTasks() async {
+    final fresh = await DBHelper.instance.getAllTasks();
+    if (mounted) setState(() => _tasks = fresh);
   }
 
   // Build map: normalised day → tasks due that day
   Map<DateTime, List<Task>> get _tasksByDay {
     final map = <DateTime, List<Task>>{};
-    for (final t in widget.tasks) {
+    for (final t in _tasks) {
       final key = DateTime(t.deadline.year, t.deadline.month, t.deadline.day);
       map.putIfAbsent(key, () => []).add(t);
     }
@@ -294,10 +302,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
-                (_, i) => TaskCard(
-                  task: selectedTasks[i],
-                  onToggleDone: () => widget.onToggle(selectedTasks[i]),
-                  onDelete:     () => widget.onDelete(selectedTasks[i]),
+                (_, i) => GestureDetector(
+                  onTap: () async {
+                    await widget.onTap(selectedTasks[i]);
+                    await _reloadTasks();
+                  },
+                  child: TaskCard(
+                    task: selectedTasks[i],
+                    onToggleDone: () async {
+                      await widget.onToggle(selectedTasks[i]);
+                      await _reloadTasks();
+                    },
+                    onDelete: () async {
+                      await widget.onDelete(selectedTasks[i]);
+                      await _reloadTasks();
+                    },
+                  ),
                 ),
                 childCount: selectedTasks.length,
               ),

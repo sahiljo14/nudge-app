@@ -1,7 +1,6 @@
 // lib/screens/doc_import_screen.dart
 
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,6 +11,7 @@ import '../parser/task_parser.dart';
 import '../services/notification_service.dart';
 import '../services/ocr_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/subject_editor_sheet.dart';
 import 'home_screen.dart';
 
 class DocImportScreen extends StatefulWidget {
@@ -664,43 +664,10 @@ class _DocImportScreenState extends State<DocImportScreen> {
     );
   }
 
-  void _editSubject(BuildContext context) {
-    final ctrl = TextEditingController(text: _subject);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Subject',
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: ctrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-                hintText: 'e.g. Operating Systems, Maths…'),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                setState(() => _subject = ctrl.text.trim());
-                Navigator.pop(context);
-              },
-              child: const Text('Done'),
-            ),
-          ),
-        ]),
-      ),
-    );
+  Future<void> _editSubject(BuildContext context) async {
+    final result = await showSubjectEditor(context, initial: _subject);
+    if (result == null || !mounted) return;
+    setState(() => _subject = result);
   }
 }
 

@@ -14,6 +14,7 @@ import '../database/db_helper.dart';
 import '../services/notification_service.dart';
 import '../features/voice_gate.dart';
 import '../services/voice_service.dart';
+import '../widgets/subject_editor_sheet.dart';
 import 'home_screen.dart';
 
 // ── Mutable task holder for multi-task preview editing ───────────────────────
@@ -359,6 +360,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
           return ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(ctx).size.height * 0.90,
@@ -368,24 +370,24 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 bottom: MediaQuery.of(ctx).viewInsets.bottom,
               ),
               child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            decoration: BoxDecoration(
+              color: AppTheme.card(isDark),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             ),
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               // Handle bar
               Container(width: 40, height: 4,
                   decoration: BoxDecoration(
-                      color: const Color(0xFFDDDDE8),
+                      color: AppTheme.border(isDark),
                       borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 20),
-              const Text('Custom reminder',
+              Text('Custom reminder',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A1A2E))),
+                      color: AppTheme.text(isDark))),
               const SizedBox(height: 6),
               Text('How long before the deadline?',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+                  style: TextStyle(fontSize: 13, color: AppTheme.subtext(isDark))),
               const SizedBox(height: 28),
 
               // Three steppers side by side — each in an Expanded
@@ -397,13 +399,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       value: days,
                       onChanged: (v) => setSheet(() => days = v),
                     )),
-                    VerticalDivider(color: Colors.grey.shade100, width: 24),
+                    VerticalDivider(color: AppTheme.border(isDark), width: 24),
                     Expanded(child: _StepperColumn(
                       label: 'Hours',
                       value: hours,
                       onChanged: (v) => setSheet(() => hours = v),
                     )),
-                    VerticalDivider(color: Colors.grey.shade100, width: 24),
+                    VerticalDivider(color: AppTheme.border(isDark), width: 24),
                     Expanded(child: _StepperColumn(
                       label: 'Mins',
                       value: minutes,
@@ -430,7 +432,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel', style: TextStyle(color: Color(0xFF888899))),
+                child: Text('Cancel', style: TextStyle(color: AppTheme.subtext(isDark))),
               ),
             ]),
           ),
@@ -662,7 +664,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: AppTheme.lightSurface,
+      backgroundColor: AppTheme.surface(isDark),
       appBar: AppBar(
         leading: IconButton(
           icon: Icon(_isEditMode
@@ -706,22 +708,22 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             children: [
               if (_isEditMode) ...[
                 // Edit mode: name text field
-                const Text('Task name',
+                Text('Task name',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                        color: Color(0xFF888899), letterSpacing: 0.3)),
+                        color: AppTheme.subtext(isDark), letterSpacing: 0.3)),
                 const SizedBox(height: 8),
                 Container(
                   decoration: BoxDecoration(
-                    color: AppTheme.lightCard,
+                    color: AppTheme.card(isDark),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.lightBorder),
+                    border: Border.all(color: AppTheme.border(isDark)),
                   ),
                   child: TextField(
                     controller: _nameCtrl,
                     textCapitalization: TextCapitalization.sentences,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A2E)),
+                        color: AppTheme.text(isDark)),
                     decoration: const InputDecoration(
                       border: InputBorder.none,
                       contentPadding:
@@ -731,21 +733,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ),
                 const SizedBox(height: 20),
               ] else ...[
-              const Text('What do you need to do?',
+              Text('What do you need to do?',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A1A2E), letterSpacing: -0.5)),
+                      color: AppTheme.text(isDark), letterSpacing: -0.5)),
               const SizedBox(height: 6),
               Text('Type anything — Nudge figures out the rest',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+                  style: TextStyle(fontSize: 13, color: AppTheme.subtext(isDark))),
               const SizedBox(height: 16),
 
               // Input box
               Container(
                 decoration: BoxDecoration(
-                  color: AppTheme.lightCard,
+                  color: AppTheme.card(isDark),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _showReview ? AppTheme.primary : AppTheme.lightBorder,
+                    color: _showReview ? AppTheme.primary : AppTheme.border(isDark),
                     width: _showReview ? 2 : 1,
                   ),
                 ),
@@ -768,7 +770,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: AppTheme.lightBorder))),
+                        border: Border(top: BorderSide(color: AppTheme.border(isDark)))),
                     child: Row(children: [
                       GestureDetector(
                         onTap: () async {
@@ -779,9 +781,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           }
                         },
                         child: Row(children: [
-                          Icon(Icons.content_paste_rounded, size: 15, color: Colors.grey.shade400),
+                          Icon(Icons.content_paste_rounded, size: 15, color: AppTheme.subtext(isDark)),
                           const SizedBox(width: 4),
-                          Text('Paste', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                          Text('Paste', style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark))),
                         ]),
                       ),
                       if (VoiceGate.isEnabled) ...[
@@ -803,7 +805,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                   size: 16,
                                   color: _isListening
                                       ? AppTheme.primary
-                                      : Colors.grey.shade400,
+                                      : AppTheme.subtext(isDark),
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
@@ -814,7 +816,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                     fontSize: 12,
                                     color: _isListening
                                         ? AppTheme.primary
-                                        : Colors.grey.shade400,
+                                        : AppTheme.subtext(isDark),
                                   ),
                                 ),
                               ]),
@@ -847,7 +849,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   _voiceError!,
                   style: const TextStyle(
                     fontSize: 11,
-                    color: Color(0xFFB80438),
+                    color: AppTheme.alert,
                     height: 1.4,
                   ),
                 ),
@@ -857,7 +859,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               if (!_showReview) ...[
                 const SizedBox(height: 16),
                 Text('Try an example',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
+                    style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark), fontWeight: FontWeight.w500)),
                 const SizedBox(height: 8),
                 Wrap(spacing: 8, runSpacing: 8,
                   children: ['OS assignment kal tak urgent', 'Maths exam Monday 9am',
@@ -866,11 +868,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     onTap: () { _ctrl.text = ex; _parse(); },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: AppTheme.lightCard,
+                      decoration: BoxDecoration(color: AppTheme.card(isDark),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppTheme.lightBorder)),
+                          border: Border.all(color: AppTheme.border(isDark))),
                       child: Text(ex, style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF6C63FF), fontWeight: FontWeight.w500)),
+                          fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w500)),
                     ),
                   )).toList(),
                 ),
@@ -974,12 +976,13 @@ class _StepperColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(label,
-            style: const TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF888899))),
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.subtext(isDark))),
         const SizedBox(height: 12),
         // Up button
         _StepBtn(
@@ -989,8 +992,8 @@ class _StepperColumn extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text('$value',
-            style: const TextStyle(
-                fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A2E))),
+            style: TextStyle(
+                fontSize: 24, fontWeight: FontWeight.w800, color: AppTheme.text(isDark))),
         const SizedBox(height: 10),
         // Down button
         _StepBtn(
@@ -1009,35 +1012,38 @@ class _StepBtn extends StatelessWidget {
   final VoidCallback? onTap;
   const _StepBtn({required this.icon, required this.filled, this.onTap});
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
-      width: 44, height: 44,
-      decoration: BoxDecoration(
-        color: onTap == null
-            ? const Color(0xFFF5F5F5)
-            : filled
-            ? AppTheme.primary
-            : const Color(0xFFF0F0F5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 44, height: 44,
+        decoration: BoxDecoration(
           color: onTap == null
-              ? const Color(0xFFE8E8EE)
+              ? AppTheme.surface(isDark)
               : filled
               ? AppTheme.primary
-              : const Color(0xFFDDDDE8),
+              : AppTheme.surface(isDark),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: onTap == null
+                ? AppTheme.border(isDark)
+                : filled
+                ? AppTheme.primary
+                : AppTheme.border(isDark),
+          ),
         ),
+        child: Icon(icon,
+            size: 20,
+            color: onTap == null
+                ? AppTheme.subtext(isDark).withValues(alpha: 0.5)
+                : filled
+                ? Colors.white
+                : AppTheme.text(isDark)),
       ),
-      child: Icon(icon,
-          size: 20,
-          color: onTap == null
-              ? Colors.grey.shade300
-              : filled
-              ? Colors.white
-              : const Color(0xFF555566)),
-    ),
-  );
+    );
+  }
 }
 
 // ── Review card ───────────────────────────────────────────────────────────────
@@ -1060,11 +1066,12 @@ class _ReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final sc = AppTheme.subjectColor(subject.isNotEmpty ? subject : 'default');
     return Container(
-      decoration: BoxDecoration(color: AppTheme.lightCard,
+      decoration: BoxDecoration(color: AppTheme.card(isDark),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.lightBorder)),
+          border: Border.all(color: AppTheme.border(isDark))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Header
         Container(
@@ -1073,7 +1080,7 @@ class _ReviewCard extends StatelessWidget {
               color: AppTheme.primary.withValues(alpha: 0.05),
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-              border: Border(bottom: BorderSide(color: AppTheme.lightBorder))),
+              border: Border(bottom: BorderSide(color: AppTheme.border(isDark)))),
           child: Row(children: [
             const Icon(Icons.auto_awesome_rounded, size: 14, color: AppTheme.primary),
             const SizedBox(width: 6),
@@ -1081,7 +1088,7 @@ class _ReviewCard extends StatelessWidget {
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
             const Spacer(),
             Text('Tap any field to edit',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark))),
           ]),
         ),
         Padding(
@@ -1090,8 +1097,8 @@ class _ReviewCard extends StatelessWidget {
             TextField(
               controller: nameCtrl,
               textCapitalization: TextCapitalization.sentences,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
-                  color: Color(0xFF1A1A2E), letterSpacing: -0.4),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
+                  color: AppTheme.text(isDark), letterSpacing: -0.4),
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
@@ -1113,7 +1120,7 @@ class _ReviewCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(subject.isEmpty ? 'Add subject' : subject,
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                            color: subject.isEmpty ? Colors.grey.shade400 : sc)),
+                            color: subject.isEmpty ? AppTheme.subtext(isDark) : sc)),
                   ]),
                 ),
               ),
@@ -1121,14 +1128,14 @@ class _ReviewCard extends StatelessWidget {
                 onTap: () => _editType(context),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(color: AppTheme.lightSurface,
+                  decoration: BoxDecoration(color: AppTheme.surface(isDark),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.lightBorder)),
+                      border: Border.all(color: AppTheme.border(isDark))),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(AppTheme.taskTypeIcon(taskType), size: 12, color: const Color(0xFF888899)),
+                    Icon(AppTheme.taskTypeIcon(taskType), size: 12, color: AppTheme.subtext(isDark)),
                     const SizedBox(width: 4),
                     Text(taskType[0].toUpperCase() + taskType.substring(1),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF888899))),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.subtext(isDark))),
                   ]),
                 ),
               ),
@@ -1137,18 +1144,26 @@ class _ReviewCard extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                      color: priority == 'urgent' ? const Color(0xFFFFF0EE) : AppTheme.lightSurface,
+                      color: priority == 'urgent'
+                          ? (isDark ? AppTheme.alert.withValues(alpha: 0.12) : const Color(0xFFFFF0EE))
+                          : AppTheme.surface(isDark),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: priority == 'urgent' ? const Color(0xFFFFCCBB) : AppTheme.lightBorder)),
+                          color: priority == 'urgent'
+                              ? (isDark ? AppTheme.alert.withValues(alpha: 0.35) : const Color(0xFFFFCCBB))
+                              : AppTheme.border(isDark))),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(priority == 'urgent' ? Icons.bolt_rounded : Icons.flag_outlined,
                         size: 12,
-                        color: priority == 'urgent' ? const Color(0xFF993C1D) : const Color(0xFF888899)),
+                        color: priority == 'urgent'
+                            ? (isDark ? const Color(0xFFFF8A70) : const Color(0xFF993C1D))
+                            : AppTheme.subtext(isDark)),
                     const SizedBox(width: 4),
                     Text(priority == 'urgent' ? 'Urgent' : 'Normal',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                            color: priority == 'urgent' ? const Color(0xFF993C1D) : const Color(0xFF888899))),
+                            color: priority == 'urgent'
+                                ? (isDark ? const Color(0xFFFF8A70) : const Color(0xFF993C1D))
+                                : AppTheme.subtext(isDark))),
                   ]),
                 ),
               ),
@@ -1158,17 +1173,17 @@ class _ReviewCard extends StatelessWidget {
               onTap: onPickDeadline,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(color: AppTheme.lightSurface,
+                decoration: BoxDecoration(color: AppTheme.surface(isDark),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.lightBorder)),
+                    border: Border.all(color: AppTheme.border(isDark))),
                 child: Row(children: [
                   Icon(Icons.calendar_today_rounded, size: 16, color: AppTheme.urgencyColor(deadline)),
                   const SizedBox(width: 10),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(DateFormat('EEEE, d MMMM yyyy').format(deadline),
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1A1A2E))),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.text(isDark))),
                     Text(DateFormat('h:mm a').format(deadline),
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                        style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark))),
                   ])),
                   if (parsed.deadlineLabel != 'Unknown')
                     Container(
@@ -1180,7 +1195,7 @@ class _ReviewCard extends StatelessWidget {
                           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primary)),
                     ),
                   const SizedBox(width: 6),
-                  Icon(Icons.edit_rounded, size: 14, color: Colors.grey.shade400),
+                  Icon(Icons.edit_rounded, size: 14, color: AppTheme.subtext(isDark)),
                 ]),
               ),
             ),
@@ -1190,31 +1205,10 @@ class _ReviewCard extends StatelessWidget {
     );
   }
 
-  void _editSubject(BuildContext context) {
-    final ctrl = TextEditingController(text: subject);
-    showModalBottomSheet(
-      context: context, isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (sheetCtx) => Padding(
-        padding: EdgeInsets.only(left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
-        child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('Subject', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            TextField(controller: ctrl, autofocus: true,
-                decoration: const InputDecoration(hintText: 'e.g. Operating Systems, Maths…')),
-            const SizedBox(height: 12),
-            SizedBox(width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () { onSubjectChange(ctrl.text.trim()); Navigator.pop(sheetCtx); },
-                  child: const Text('Done'),
-                )),
-          ]),
-        ),
-      ),
-    );
+  Future<void> _editSubject(BuildContext context) async {
+    final result = await showSubjectEditor(context, initial: subject);
+    if (result == null) return;
+    onSubjectChange(result);
   }
 
   void _editType(BuildContext context) {
@@ -1258,11 +1252,12 @@ class _DescLinksSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.lightCard,
+        color: AppTheme.card(isDark),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.lightBorder),
+        border: Border.all(color: AppTheme.border(isDark)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
@@ -1271,7 +1266,7 @@ class _DescLinksSection extends StatelessWidget {
             color: AppTheme.primary.withValues(alpha: 0.05),
             borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-            border: Border(bottom: BorderSide(color: AppTheme.lightBorder)),
+            border: Border(bottom: BorderSide(color: AppTheme.border(isDark))),
           ),
           child: Row(children: [
             const Icon(Icons.notes_rounded, size: 14, color: AppTheme.primary),
@@ -1279,7 +1274,7 @@ class _DescLinksSection extends StatelessWidget {
             const Text('Notes & links',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
             const Spacer(),
-            Text('optional', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            Text('optional', style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark))),
           ]),
         ),
         Padding(
@@ -1291,15 +1286,15 @@ class _DescLinksSection extends StatelessWidget {
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
                 hintText: 'Description or notes…',
-                hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+                hintStyle: TextStyle(fontSize: 13, color: AppTheme.subtext(isDark)),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.zero,
               ),
-              style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A2E)),
+              style: TextStyle(fontSize: 13, color: AppTheme.text(isDark)),
             ),
             const SizedBox(height: 10),
-            Divider(color: AppTheme.lightBorder, height: 1),
+            Divider(color: AppTheme.border(isDark), height: 1),
             const SizedBox(height: 10),
             // Link fields
             ...List.generate(linkCtrls.length, (i) => Padding(
@@ -1307,7 +1302,7 @@ class _DescLinksSection extends StatelessWidget {
               child: Row(children: [
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: Icon(Icons.link_rounded, size: 16, color: Colors.grey.shade400),
+                  child: Icon(Icons.link_rounded, size: 16, color: AppTheme.subtext(isDark)),
                 ),
                 Expanded(
                   child: TextField(
@@ -1317,12 +1312,12 @@ class _DescLinksSection extends StatelessWidget {
                       hintText: linkCtrls.length > 1
                           ? 'Link ${i + 1} (optional)'
                           : 'Reference link (optional)',
-                      hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+                      hintStyle: TextStyle(fontSize: 13, color: AppTheme.subtext(isDark)),
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                     ),
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A2E)),
+                    style: TextStyle(fontSize: 13, color: AppTheme.text(isDark)),
                   ),
                 ),
                 if (linkCtrls.length > 1)
@@ -1331,7 +1326,7 @@ class _DescLinksSection extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.only(left: 8),
                       child: Icon(Icons.remove_circle_outline_rounded,
-                          size: 18, color: Colors.grey.shade400),
+                          size: 18, color: AppTheme.subtext(isDark)),
                     ),
                   ),
               ]),
@@ -1368,11 +1363,12 @@ class _RemindersSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final now = DateTime.now();
     return Container(
-      decoration: BoxDecoration(color: AppTheme.lightCard,
+      decoration: BoxDecoration(color: AppTheme.card(isDark),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.lightBorder)),
+          border: Border.all(color: AppTheme.border(isDark))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1380,7 +1376,7 @@ class _RemindersSection extends StatelessWidget {
               color: AppTheme.primary.withValues(alpha: 0.05),
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-              border: Border(bottom: BorderSide(color: AppTheme.lightBorder))),
+              border: Border(bottom: BorderSide(color: AppTheme.border(isDark)))),
           child: Row(children: [
             const Icon(Icons.notifications_rounded, size: 14, color: AppTheme.primary),
             const SizedBox(width: 6),
@@ -1388,7 +1384,7 @@ class _RemindersSection extends StatelessWidget {
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
             const Spacer(),
             Text('Tap to toggle',
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
+                style: TextStyle(fontSize: 10, color: AppTheme.subtext(isDark))),
           ]),
         ),
         Padding(
@@ -1408,14 +1404,14 @@ class _RemindersSection extends StatelessWidget {
                     duration: const Duration(milliseconds: 180),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: !possible ? const Color(0xFFF5F5F5)
+                      color: !possible ? AppTheme.surface(isDark)
                           : active ? AppTheme.primary.withValues(alpha: 0.12)
-                          : const Color(0xFFF0F0F5),
+                          : AppTheme.surfaceLow(isDark),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: !possible ? const Color(0xFFE0E0E0)
+                        color: !possible ? AppTheme.border(isDark)
                             : active ? AppTheme.primary.withValues(alpha: 0.4)
-                            : const Color(0xFFDDDDE8),
+                            : AppTheme.border(isDark),
                         width: active ? 1.5 : 1,
                       ),
                     ),
@@ -1423,21 +1419,21 @@ class _RemindersSection extends StatelessWidget {
                       Icon(
                         active ? Icons.notifications_active_rounded : Icons.notifications_off_outlined,
                         size: 12,
-                        color: !possible ? Colors.grey.shade300
-                            : active ? AppTheme.primary : Colors.grey.shade400,
+                        color: !possible ? AppTheme.border(isDark)
+                            : active ? AppTheme.primary : AppTheme.subtext(isDark),
                       ),
                       const SizedBox(width: 5),
                       Text(r.label,
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                            color: !possible ? Colors.grey.shade300
-                                : active ? AppTheme.primary : Colors.grey.shade400,
+                            color: !possible ? AppTheme.border(isDark)
+                                : active ? AppTheme.primary : AppTheme.subtext(isDark),
                           )),
                       if (isCustom && possible) ...[
                         const SizedBox(width: 4),
                         Icon(Icons.close_rounded, size: 10,
-                            color: active ? AppTheme.primary : Colors.grey.shade400),
+                            color: active ? AppTheme.primary : AppTheme.subtext(isDark)),
                       ],
                     ]),
                   ),
@@ -1447,24 +1443,24 @@ class _RemindersSection extends StatelessWidget {
                 onTap: onAddCustom,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(color: AppTheme.lightSurface,
+                  decoration: BoxDecoration(color: AppTheme.surface(isDark),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.lightBorder)),
+                      border: Border.all(color: AppTheme.border(isDark))),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.add_rounded, size: 12, color: Colors.grey.shade500),
+                    Icon(Icons.add_rounded, size: 12, color: AppTheme.subtext(isDark)),
                     const SizedBox(width: 4),
-                    Text('Custom', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade500)),
+                    Text('Custom', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.subtext(isDark))),
                   ]),
                 ),
               ),
             ]),
             const SizedBox(height: 10),
             Row(children: [
-              Icon(Icons.info_outline_rounded, size: 11, color: Colors.grey.shade400),
+              Icon(Icons.info_outline_rounded, size: 11, color: AppTheme.subtext(isDark)),
               const SizedBox(width: 4),
               Expanded(
                 child: Text('Greyed = not enough time remaining · Long-press custom to remove',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
+                    style: TextStyle(fontSize: 10, color: AppTheme.subtext(isDark))),
               ),
             ]),
           ]),
@@ -1503,11 +1499,12 @@ class _AttachmentSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.lightCard,
+        color: AppTheme.card(isDark),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.lightBorder),
+        border: Border.all(color: AppTheme.border(isDark)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Header
@@ -1517,7 +1514,7 @@ class _AttachmentSection extends StatelessWidget {
             color: AppTheme.primary.withValues(alpha: 0.05),
             borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-            border: Border(bottom: BorderSide(color: AppTheme.lightBorder)),
+            border: Border(bottom: BorderSide(color: AppTheme.border(isDark))),
           ),
           child: Row(children: [
             const Icon(Icons.attach_file_rounded, size: 14, color: AppTheme.primary),
@@ -1527,10 +1524,10 @@ class _AttachmentSection extends StatelessWidget {
             const Spacer(),
             if (files.isNotEmpty)
               Text('${files.length} file${files.length == 1 ? '' : 's'}',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400))
+                  style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark)))
             else
               Text('PDF, image, Word',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                  style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark))),
           ]),
         ),
 
@@ -1556,21 +1553,26 @@ class _AttachmentSection extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(f.name,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                              color: Color(0xFF1A1A2E)),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                              color: AppTheme.text(isDark)),
                           overflow: TextOverflow.ellipsis),
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () => onRemove(i),
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFEEEE),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.close_rounded,
-                            size: 16, color: Color(0xFFA32D2D)),
+                      child: Builder(
+                        builder: (context) {
+                          final isDk = Theme.of(context).brightness == Brightness.dark;
+                          return Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: isDk ? AppTheme.alert.withValues(alpha: 0.15) : const Color(0xFFFFEEEE),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.close_rounded,
+                                size: 16, color: isDk ? const Color(0xFFFF8A70) : const Color(0xFFA32D2D)),
+                          );
+                        },
                       ),
                     ),
                   ]),
@@ -1588,15 +1590,15 @@ class _AttachmentSection extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       decoration: BoxDecoration(
-                        color: AppTheme.lightSurface,
+                        color: AppTheme.surface(isDark),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.lightBorder),
+                        border: Border.all(color: AppTheme.border(isDark)),
                       ),
                       child: Column(children: [
-                        Icon(Icons.camera_alt_rounded, size: 28, color: Colors.grey.shade400),
+                        Icon(Icons.camera_alt_rounded, size: 28, color: AppTheme.subtext(isDark)),
                         const SizedBox(height: 6),
                         Text('Take Photo',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500,
+                            style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark),
                                 fontWeight: FontWeight.w600)),
                       ]),
                     ),
@@ -1609,15 +1611,15 @@ class _AttachmentSection extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       decoration: BoxDecoration(
-                        color: AppTheme.lightSurface,
+                        color: AppTheme.surface(isDark),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.lightBorder),
+                        border: Border.all(color: AppTheme.border(isDark)),
                       ),
                       child: Column(children: [
-                        Icon(Icons.upload_file_rounded, size: 28, color: Colors.grey.shade400),
+                        Icon(Icons.upload_file_rounded, size: 28, color: AppTheme.subtext(isDark)),
                         const SizedBox(height: 6),
                         Text('Attach File',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500,
+                            style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark),
                                 fontWeight: FontWeight.w600)),
                       ]),
                     ),
@@ -1632,14 +1634,14 @@ class _AttachmentSection extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: AppTheme.lightSurface,
+                        color: AppTheme.surface(isDark),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppTheme.lightBorder),
+                        border: Border.all(color: AppTheme.border(isDark)),
                       ),
                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.camera_alt_rounded, size: 15, color: Colors.grey.shade500),
+                        Icon(Icons.camera_alt_rounded, size: 15, color: AppTheme.subtext(isDark)),
                         const SizedBox(width: 5),
-                        Text('Photo', style: TextStyle(fontSize: 12, color: Colors.grey.shade500,
+                        Text('Photo', style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark),
                             fontWeight: FontWeight.w600)),
                       ]),
                     ),
@@ -1652,14 +1654,14 @@ class _AttachmentSection extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: AppTheme.lightSurface,
+                        color: AppTheme.surface(isDark),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppTheme.lightBorder),
+                        border: Border.all(color: AppTheme.border(isDark)),
                       ),
                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.add_rounded, size: 15, color: Colors.grey.shade500),
+                        Icon(Icons.add_rounded, size: 15, color: AppTheme.subtext(isDark)),
                         const SizedBox(width: 5),
-                        Text('File', style: TextStyle(fontSize: 12, color: Colors.grey.shade500,
+                        Text('File', style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark),
                             fontWeight: FontWeight.w600)),
                       ]),
                     ),
@@ -1733,11 +1735,12 @@ class _MultiTaskPreviewSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.lightCard,
+        color: AppTheme.card(isDark),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.lightBorder),
+        border: Border.all(color: AppTheme.border(isDark)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Header
@@ -1747,7 +1750,7 @@ class _MultiTaskPreviewSection extends StatelessWidget {
             color: AppTheme.primary.withValues(alpha: 0.05),
             borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-            border: Border(bottom: BorderSide(color: AppTheme.lightBorder)),
+            border: Border(bottom: BorderSide(color: AppTheme.border(isDark))),
           ),
           child: Row(children: [
             const Icon(Icons.auto_awesome_rounded, size: 14, color: AppTheme.primary),
@@ -1756,7 +1759,7 @@ class _MultiTaskPreviewSection extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
             const SizedBox(width: 6),
-            Text('·', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            Text('·', style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark))),
             const SizedBox(width: 6),
             GestureDetector(
               onTap: () => _batchSubjectSheet(context),
@@ -1769,7 +1772,7 @@ class _MultiTaskPreviewSection extends StatelessWidget {
             Flexible(
               child: Text('Tap to edit • tap date to change',
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                  style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark))),
             ),
           ]),
         ),
@@ -1839,41 +1842,16 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
     return AppTheme.primary;
   }
 
-  void _editSubject(BuildContext context) {
-    final ctrl = TextEditingController(text: widget.task.subject);
-    showModalBottomSheet(
-      context: context, isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (sheetCtx) => Padding(
-        padding: EdgeInsets.only(left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
-        child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('Subject',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            TextField(
-                controller: ctrl, autofocus: true,
-                decoration: const InputDecoration(
-                    hintText: 'e.g. Operating Systems, Maths…')),
-            const SizedBox(height: 12),
-            SizedBox(width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    setState(() => widget.task.subject = ctrl.text.trim());
-                    Navigator.pop(sheetCtx);
-                  },
-                  child: const Text('Done'),
-                )),
-          ]),
-        ),
-      ),
-    );
+  Future<void> _editSubject(BuildContext context) async {
+    final result =
+        await showSubjectEditor(context, initial: widget.task.subject);
+    if (result == null || !mounted) return;
+    setState(() => widget.task.subject = result);
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final task  = widget.task;
     final index = widget.index;
     final sc = AppTheme.subjectColor(
@@ -1882,7 +1860,7 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         border: index > 0
-            ? Border(top: BorderSide(color: AppTheme.lightBorder))
+            ? Border(top: BorderSide(color: AppTheme.border(isDark)))
             : null,
         borderRadius: widget.isLast
             ? const BorderRadius.only(
@@ -1911,9 +1889,9 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
             // Editable task name
             TextField(
               controller: task.nameCtrl,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 14, fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A1A2E)),
+                  color: AppTheme.text(isDark)),
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
@@ -1960,28 +1938,28 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
                     : Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                         decoration: BoxDecoration(
-                          color: AppTheme.lightSurface,
+                          color: AppTheme.surface(isDark),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppTheme.lightBorder),
+                          border: Border.all(color: AppTheme.border(isDark)),
                         ),
                         child: Text('Add subject',
                             style: TextStyle(
                                 fontSize: 10, fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade400)),
+                                color: AppTheme.subtext(isDark))),
                       ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppTheme.lightSurface,
+                  color: AppTheme.surface(isDark),
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppTheme.lightBorder),
+                  border: Border.all(color: AppTheme.border(isDark)),
                 ),
                 child: Text(
                     task.taskType[0].toUpperCase() + task.taskType.substring(1),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 10, fontWeight: FontWeight.w600,
-                        color: Color(0xFF888899))),
+                        color: AppTheme.subtext(isDark))),
               ),
             ]),
             // "Add details / Hide details" toggle
@@ -2010,9 +1988,9 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppTheme.lightSurface,
+                  color: AppTheme.surface(isDark),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.lightBorder),
+                  border: Border.all(color: AppTheme.border(isDark)),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   // Description field
@@ -2022,21 +2000,21 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
                     textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
                       hintText: 'Description or notes…',
-                      hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                      hintStyle: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark)),
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                     ),
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF1A1A2E)),
+                    style: TextStyle(fontSize: 12, color: AppTheme.text(isDark)),
                   ),
                   const SizedBox(height: 8),
-                  Divider(color: AppTheme.lightBorder, height: 1),
+                  Divider(color: AppTheme.border(isDark), height: 1),
                   const SizedBox(height: 8),
                   // Link fields
                   ...List.generate(task.linkCtrls.length, (j) => Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Row(children: [
-                      Icon(Icons.link_rounded, size: 14, color: Colors.grey.shade400),
+                      Icon(Icons.link_rounded, size: 14, color: AppTheme.subtext(isDark)),
                       const SizedBox(width: 6),
                       Expanded(
                         child: TextField(
@@ -2046,12 +2024,12 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
                             hintText: task.linkCtrls.length > 1
                                 ? 'Link ${j + 1} (optional)'
                                 : 'Reference link (optional)',
-                            hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                            hintStyle: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark)),
                             border: InputBorder.none,
                             isDense: true,
                             contentPadding: EdgeInsets.zero,
                           ),
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF1A1A2E)),
+                          style: TextStyle(fontSize: 12, color: AppTheme.text(isDark)),
                         ),
                       ),
                       if (task.linkCtrls.length > 1)
@@ -2060,7 +2038,7 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
                           child: Padding(
                             padding: const EdgeInsets.only(left: 6),
                             child: Icon(Icons.remove_circle_outline_rounded,
-                                size: 16, color: Colors.grey.shade400),
+                                size: 16, color: AppTheme.subtext(isDark)),
                           ),
                         ),
                     ]),
@@ -2078,7 +2056,7 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
                     ]),
                   ),
                   const SizedBox(height: 8),
-                  Divider(color: AppTheme.lightBorder, height: 1),
+                  Divider(color: AppTheme.border(isDark), height: 1),
                   const SizedBox(height: 8),
                   // Attached files list
                   if (task.attachedFiles.isNotEmpty) ...[
@@ -2099,9 +2077,9 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(f.name,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 12, fontWeight: FontWeight.w600,
-                                    color: Color(0xFF1A1A2E)),
+                                    color: AppTheme.text(isDark)),
                                 overflow: TextOverflow.ellipsis),
                           ),
                           const SizedBox(width: 6),
@@ -2110,11 +2088,11 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
                             child: Container(
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFFEEEE),
+                                color: isDark ? AppTheme.alert.withValues(alpha: 0.15) : const Color(0xFFFFEEEE),
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Icon(Icons.close_rounded,
-                                  size: 14, color: Color(0xFFA32D2D)),
+                              child: Icon(Icons.close_rounded,
+                                  size: 14, color: isDark ? const Color(0xFFFF8A70) : const Color(0xFFA32D2D)),
                             ),
                           ),
                         ]),
@@ -2130,17 +2108,17 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           decoration: BoxDecoration(
-                            color: AppTheme.lightCard,
+                            color: AppTheme.card(isDark),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.lightBorder),
+                            border: Border.all(color: AppTheme.border(isDark)),
                           ),
                           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                             Icon(Icons.camera_alt_rounded, size: 13,
-                                color: Colors.grey.shade500),
+                                color: AppTheme.subtext(isDark)),
                             const SizedBox(width: 4),
                             Text('Photo',
                                 style: TextStyle(
-                                    fontSize: 11, color: Colors.grey.shade500,
+                                    fontSize: 11, color: AppTheme.subtext(isDark),
                                     fontWeight: FontWeight.w600)),
                           ]),
                         ),
@@ -2153,17 +2131,17 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           decoration: BoxDecoration(
-                            color: AppTheme.lightCard,
+                            color: AppTheme.card(isDark),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.lightBorder),
+                            border: Border.all(color: AppTheme.border(isDark)),
                           ),
                           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                             Icon(Icons.add_rounded, size: 13,
-                                color: Colors.grey.shade500),
+                                color: AppTheme.subtext(isDark)),
                             const SizedBox(width: 4),
                             Text('File',
                                 style: TextStyle(
-                                    fontSize: 11, color: Colors.grey.shade500,
+                                    fontSize: 11, color: AppTheme.subtext(isDark),
                                     fontWeight: FontWeight.w600)),
                           ]),
                         ),
@@ -2181,7 +2159,7 @@ class _MultiTaskRowState extends State<_MultiTaskRow> {
           child: Padding(
             padding: const EdgeInsets.only(left: 8),
             child: Icon(Icons.remove_circle_outline_rounded,
-                size: 20, color: Colors.grey.shade400),
+                size: 20, color: AppTheme.subtext(isDark)),
           ),
         ),
       ]),

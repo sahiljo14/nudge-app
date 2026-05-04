@@ -8,6 +8,7 @@ import '../database/db_helper.dart';
 import '../models/task.dart';
 import '../services/user_prefs.dart';
 import '../theme/app_theme.dart';
+import '../utils/streak_utils.dart' as streak_utils;
 import '../widgets/nudge_primitives.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -67,18 +68,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadData();
   }
 
-  bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  /// Returns the calendar day a done task should count toward.
-  /// Uses real completedAt when available; falls back to deadline for
-  /// pre-migration rows that have isDone=true but completedAt=null.
-  DateTime? _completionDay(task) {
-    if (!task.isDone) return null;
-    final dt = task.completedAt ?? task.deadline;
-    return DateTime(dt.year, dt.month, dt.day);
-  }
-
   // ── Computed properties ──────────────────────────────────────────────────
 
   int get _totalDone => _allTasks.where((t) => t.isDone).length;
@@ -89,63 +78,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   double get _xpProgressInLevel => (_xp % 100) / 100.0;
 
-  int get _currentStreak {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    int streak = 0;
-    final todayHas = _allTasks.any((t) {
-      final d = _completionDay(t);
-      return d != null && _sameDay(d, today);
-    });
-    if (todayHas) streak++;
-    for (int i = 1; i < 365; i++) {
-      final day = today.subtract(Duration(days: i));
-      final has = _allTasks.any((t) {
-        final d = _completionDay(t);
-        return d != null && _sameDay(d, day);
-      });
-      if (has) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
+  int get _currentStreak => streak_utils.currentStreak(_allTasks);
 
-  int get _bestStreak {
-    if (_allTasks.isEmpty) return 0;
-    final doneDays = <DateTime>{};
-    for (final t in _allTasks) {
-      final d = _completionDay(t);
-      if (d != null) doneDays.add(d);
-    }
-    if (doneDays.isEmpty) return 0;
-    final sorted = doneDays.toList()..sort();
-    int best = 1, current = 1;
-    for (int i = 1; i < sorted.length; i++) {
-      if (sorted[i].difference(sorted[i - 1]).inDays == 1) {
-        current++;
-        if (current > best) best = current;
-      } else {
-        current = 1;
-      }
-    }
-    return best;
-  }
+  int get _bestStreak => streak_utils.bestStreak(_allTasks);
 
   // [Mon … Sun] — true = has a done task completed on that day
   List<bool> get _weekActivity {
     final now = DateTime.now();
     final monday = DateTime(now.year, now.month, now.day)
         .subtract(Duration(days: now.weekday - 1));
-    return List.generate(7, (i) {
-      final day = monday.add(Duration(days: i));
-      return _allTasks.any((t) {
-        final d = _completionDay(t);
-        return d != null && _sameDay(d, day);
-      });
-    });
+    final done = streak_utils.doneDaysSet(_allTasks);
+    return List.generate(7, (i) => done.contains(monday.add(Duration(days: i))));
   }
 
   double _streakRingValue(int streak) {
