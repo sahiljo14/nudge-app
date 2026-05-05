@@ -1,6 +1,8 @@
 package com.nudgeapp.nudge
 
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Parcelable
@@ -10,7 +12,8 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
-    private val CHANNEL = "com.nudge.app/share"
+    private val SHARE_CHANNEL = "com.nudge.app/share"
+    private val ICON_CHANNEL = "app.icon"
     private val ttsChannel by lazy { TtsChannel(this) }
 
     private var pendingText: String? = null
@@ -32,7 +35,37 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         ttsChannel.register(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ICON_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "changeIcon" -> {
+                        val isDark = readIsDarkArgument(call.arguments)
+                        if (isDark == null) {
+                            result.error(
+                                "BAD_ARGS",
+                                "changeIcon expects a Boolean isDark argument",
+                                null
+                            )
+                            return@setMethodCallHandler
+                        }
+
+                        try {
+                            changeIcon(isDark)
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error(
+                                "ICON_CHANGE_FAILED",
+                                e.message ?: "Unable to change launcher icon",
+                                null
+                            )
+                        }
+                    }
+
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHARE_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
 
@@ -72,7 +105,45 @@ class MainActivity : FlutterActivity() {
 
                     else -> result.notImplemented()
                 }
-            }
+        }
+    }
+
+    private fun readIsDarkArgument(arguments: Any?): Boolean? =
+        when (arguments) {
+            is Boolean -> arguments
+            is Map<*, *> -> arguments["isDark"] as? Boolean
+            else -> null
+        }
+
+    private fun changeIcon(isDark: Boolean) {
+        val lightAlias = aliasComponent("MainActivityLight")
+        val darkAlias = aliasComponent("MainActivityDark")
+        val activeAlias = if (isDark) darkAlias else lightAlias
+        val inactiveAlias = if (isDark) lightAlias else darkAlias
+
+        setAliasEnabled(inactiveAlias, false)
+        setAliasEnabled(activeAlias, true)
+    }
+
+    private fun aliasComponent(aliasName: String): ComponentName =
+        ComponentName(this, "$packageName.$aliasName")
+
+    private fun setAliasEnabled(componentName: ComponentName, enabled: Boolean) {
+        val desiredState = if (enabled) {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        } else {
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+        }
+
+        if (packageManager.getComponentEnabledSetting(componentName) == desiredState) {
+            return
+        }
+
+        packageManager.setComponentEnabledSetting(
+            componentName,
+            desiredState,
+            PackageManager.DONT_KILL_APP
+        )
     }
 
     override fun onRequestPermissionsResult(

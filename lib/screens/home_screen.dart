@@ -22,6 +22,7 @@ import 'calendar_screen.dart';
 import 'ocr_scan_screen.dart';
 import 'profile_screen.dart';
 import '../features/voice_gate.dart';
+import '../services/app_icon_service.dart';
 import '../services/user_prefs.dart';
 import '../services/voice_service.dart';
 
@@ -2036,6 +2037,7 @@ class _SettingsTab extends StatefulWidget {
 
 class _SettingsTabState extends State<_SettingsTab> {
   String _saveLocation = 'Default (app folder)';
+  bool _themeIconUpdating = false;
 
   Future<void> _pickSaveLocation() async {
     final isDark = widget.isDark;
@@ -2077,6 +2079,29 @@ class _SettingsTabState extends State<_SettingsTab> {
       ),
     );
     if (picked != null) setState(() => _saveLocation = picked);
+  }
+
+  Future<void> _setDarkMode(bool enabled) async {
+    if (_themeIconUpdating) return;
+    setState(() => _themeIconUpdating = true);
+
+    themeNotifier.value = enabled ? ThemeMode.dark : ThemeMode.light;
+
+    try {
+      await UserPrefs.setThemeMode(enabled ? 'dark' : 'light');
+      await AppIconService.changeIcon(enabled);
+    } catch (e) {
+      debugPrint('Unable to update app icon: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Theme updated. Launcher icon will sync on restart.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _themeIconUpdating = false);
+    }
   }
 
   @override
@@ -2142,18 +2167,38 @@ class _SettingsTabState extends State<_SettingsTab> {
           _SettingsSection(isDark: isDark, children: [
             ValueListenableBuilder<ThemeMode>(
               valueListenable: themeNotifier,
-              builder: (_, mode, __) => _SettingsRow(
-                icon: Icons.dark_mode_rounded,
-                iconColor: const Color(0xFFAB47BC),
-                title: 'Dark mode',
-                isDark: isDark,
-                trailing: Switch(
-                  value: mode == ThemeMode.dark,
-                  onChanged: (v) {
-                    themeNotifier.value =
-                    v ? ThemeMode.dark : ThemeMode.light;
-                    UserPrefs.setThemeMode(v ? 'dark' : 'light');
-                  },
+              builder: (_, mode, __) => SwitchListTile(
+                value: mode == ThemeMode.dark,
+                onChanged: _themeIconUpdating ? null : _setDarkMode,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                secondary: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFAB47BC).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.dark_mode_rounded,
+                    color: Color(0xFFAB47BC),
+                    size: 18,
+                  ),
+                ),
+                title: Text(
+                  'Dark mode',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.text(isDark),
+                  ),
+                ),
+                subtitle: Text(
+                  'Updates app theme and launcher icon',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.subtext(isDark),
+                  ),
                 ),
               ),
             ),
