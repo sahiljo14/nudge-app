@@ -15,7 +15,6 @@ import '../services/notification_service.dart';
 import '../features/voice_gate.dart';
 import '../services/voice_service.dart';
 import '../widgets/subject_editor_sheet.dart';
-import 'home_screen.dart';
 
 // ── Mutable task holder for multi-task preview editing ───────────────────────
 
@@ -636,10 +635,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
 
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-          (_) => false,
-    );
+    Navigator.of(context).pop();
   }
 
   Future<void> _scheduleSelected(Task task) async {
@@ -670,16 +666,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           icon: Icon(_isEditMode
               ? Icons.arrow_back_rounded
               : Icons.close_rounded),
-          onPressed: () {
-            if (_isEditMode) {
-              Navigator.of(context).pop();
-            } else {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const HomeScreen()),
-                (_) => false,
-              );
-            }
-          },
+          onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(_isEditMode ? 'Edit task' : 'New task'),
         actions: [

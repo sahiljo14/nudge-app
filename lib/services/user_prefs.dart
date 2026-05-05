@@ -20,15 +20,23 @@ class UserPrefs {
     return p.getBool(_keySetupCompleted) ?? false;
   }
 
+  /// Tri-state: null = never set (fresh install), true = done, false = user reset.
+  static Future<bool?> getSetupCompletedRaw() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getBool(_keySetupCompleted);
+  }
+
   static Future<void> setSetupCompleted(bool value) async {
     final p = await SharedPreferences.getInstance();
     await p.setBool(_keySetupCompleted, value);
   }
 
-  /// Clears the setup flag so onboarding will show again on next launch.
+  /// Marks the flag false so onboarding re-runs on next launch — even if the
+  /// user already has tasks (the splash gate's "existing user" auto-skip only
+  /// fires when the flag is absent).
   static Future<void> resetOnboarding() async {
     final p = await SharedPreferences.getInstance();
-    await p.remove(_keySetupCompleted);
+    await p.setBool(_keySetupCompleted, false);
   }
 
   // ── User profile ──────────────────────────────────────────────────────────

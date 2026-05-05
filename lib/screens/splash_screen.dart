@@ -1,6 +1,7 @@
 // lib/screens/splash_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../database/db_helper.dart';
 import '../services/share_service.dart';
 import '../services/user_prefs.dart';
@@ -59,16 +60,21 @@ class _SplashScreenState extends State<SplashScreen>
     // Only show onboarding on a true fresh install. Existing users who have
     // tasks in the DB are silently marked as setup-complete so they never see
     // the onboarding flow unexpectedly.
-    final setupDone = await UserPrefs.getSetupCompleted();
+    final setupRaw = await UserPrefs.getSetupCompletedRaw();
     if (!mounted) return;
-    if (!setupDone) {
-      final existingTasks = await DBHelper.instance.getAllTasks();
-      if (!mounted) return;
-      if (existingTasks.isNotEmpty) {
-        // Existing user — quietly mark setup done and proceed normally.
-        await UserPrefs.setSetupCompleted(true);
+    if (setupRaw != true) {
+      // Auto-skip onboarding only on a true fresh install (key absent) when
+      // the user already has tasks — never when the user explicitly reset.
+      if (setupRaw == null) {
+        final existingTasks = await DBHelper.instance.getAllTasks();
+        if (!mounted) return;
+        if (existingTasks.isNotEmpty) {
+          await UserPrefs.setSetupCompleted(true);
+        } else {
+          dest = OnboardingScreen(destination: dest);
+        }
       } else {
-        // Fresh install — show onboarding, passing the intended destination.
+        // Explicit false → user-requested reset. Always show onboarding.
         dest = OnboardingScreen(destination: dest);
       }
     }
@@ -99,16 +105,12 @@ class _SplashScreenState extends State<SplashScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 88, height: 88,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary,
-                      borderRadius: BorderRadius.circular(26),
-                    ),
-                    child: const Icon(
-                      Icons.bolt_rounded,
-                      color: Colors.white, size: 48,
-                    ),
+                  SvgPicture.asset(
+                    Theme.of(context).brightness == Brightness.dark
+                        ? 'assets/logos/dark_mode.svg'
+                        : 'assets/logos/light_mode.svg',
+                    width: 88,
+                    height: 88,
                   ),
                   const SizedBox(height: 20),
                   const Text('Nudge',

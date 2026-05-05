@@ -3,12 +3,13 @@
 // Never shown to existing users who already have tasks (handled in splash_screen).
 
 import 'dart:io' as import_dart_io;
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/user_prefs.dart';
 import '../theme/app_theme.dart';
+import '../widgets/photo_source_sheet.dart';
 
 class OnboardingScreen extends StatefulWidget {
   /// The screen to navigate to after setup completes or is skipped.
@@ -117,6 +118,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
   }
 
+  // ── Photo picker ──────────────────────────────────────────────────────────
+
+  Future<void> _pickPhoto() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final source = await PhotoSourceSheet.show(context, isDark: isDark);
+    if (source == null || !mounted) return;
+    final picker = ImagePicker();
+    final photo = await picker.pickImage(source: source, imageQuality: 85);
+    if (photo != null && mounted) {
+      setState(() => _selectedPhotoPath = photo.path);
+    }
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -201,12 +215,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       );
       case 3: return _StepPhoto(
         selectedPath: _selectedPhotoPath,
-        onPick: () async {
-          final r = await FilePicker.platform.pickFiles(type: FileType.image);
-          if (r != null && r.files.single.path != null) {
-            setState(() => _selectedPhotoPath = r.files.single.path);
-          }
-        },
+        onPick: _pickPhoto,
         onRemove: () => setState(() => _selectedPhotoPath = null),
         isDark: isDark,
       );
