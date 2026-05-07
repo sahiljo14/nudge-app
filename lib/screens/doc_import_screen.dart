@@ -347,27 +347,29 @@ class _DocImportScreenState extends State<DocImportScreen> {
                 // ── Image action buttons (change image) ──────────────────
                 if (_isImage) ...[
                   const SizedBox(height: 14),
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    _ActionChip(
-                      icon: Icons.photo_library_rounded,
-                      label: 'Change image',
-                      onTap: _pickFromGallery,
-                    ),
-                    const SizedBox(width: 10),
-                    _ActionChip(
-                      icon: Icons.camera_alt_rounded,
-                      label: 'Take photo',
-                      onTap: _takePhoto,
-                    ),
-                    if (_ocrText.isNotEmpty && !_ocrRunning) ...[
-                      const SizedBox(width: 10),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: [
                       _ActionChip(
-                        icon: Icons.refresh_rounded,
-                        label: 'Re-scan',
-                        onTap: _runOcr,
+                        icon: Icons.photo_library_rounded,
+                        label: 'Change image',
+                        onTap: _pickFromGallery,
                       ),
+                      _ActionChip(
+                        icon: Icons.camera_alt_rounded,
+                        label: 'Take photo',
+                        onTap: _takePhoto,
+                      ),
+                      if (_ocrText.isNotEmpty && !_ocrRunning)
+                        _ActionChip(
+                          icon: Icons.refresh_rounded,
+                          label: 'Re-scan',
+                          onTap: _runOcr,
+                        ),
                     ],
-                  ]),
+                  ),
                 ],
               ]),
             ),

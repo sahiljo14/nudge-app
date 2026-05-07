@@ -534,27 +534,29 @@ class _OcrScanScreenState extends State<OcrScanScreen> {
                   const SizedBox(height: 12),
 
                   // Change image / re-scan actions
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    _SmallChip(
-                      icon: Icons.photo_library_rounded,
-                      label: 'Change',
-                      onTap: _pickFromGallery,
-                    ),
-                    const SizedBox(width: 8),
-                    _SmallChip(
-                      icon: Icons.camera_alt_rounded,
-                      label: 'Retake',
-                      onTap: _takePhoto,
-                    ),
-                    if (_ocrText.isNotEmpty) ...[
-                      const SizedBox(width: 8),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
                       _SmallChip(
-                        icon: Icons.refresh_rounded,
-                        label: 'Re-scan',
-                        onTap: _runOcr,
+                        icon: Icons.photo_library_rounded,
+                        label: 'Change',
+                        onTap: _pickFromGallery,
                       ),
+                      _SmallChip(
+                        icon: Icons.camera_alt_rounded,
+                        label: 'Retake',
+                        onTap: _takePhoto,
+                      ),
+                      if (_ocrText.isNotEmpty)
+                        _SmallChip(
+                          icon: Icons.refresh_rounded,
+                          label: 'Re-scan',
+                          onTap: _runOcr,
+                        ),
                     ],
-                  ]),
+                  ),
                 ]),
               ),
 
