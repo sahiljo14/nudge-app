@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../services/user_prefs.dart';
 import '../theme/app_theme.dart';
 import '../widgets/photo_source_sheet.dart';
@@ -278,14 +279,13 @@ class _StepWelcome extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Brand icon
-        Container(
-          width: 80, height: 80,
-          decoration: BoxDecoration(
-            color: AppTheme.primary,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 44),
+        // Brand logo
+        SvgPicture.asset(
+          isDark
+              ? 'assets/logos/dark_mode.svg'
+              : 'assets/logos/light_mode.svg',
+          width: 80,
+          height: 80,
         ),
         const SizedBox(height: 28),
         Text('Welcome to Nudge',
