@@ -22,7 +22,6 @@ import 'calendar_screen.dart';
 import 'ocr_scan_screen.dart';
 import 'profile_screen.dart';
 import '../features/voice_gate.dart';
-import '../services/app_icon_service.dart';
 import '../services/user_prefs.dart';
 import '../services/voice_service.dart';
 
@@ -2089,16 +2088,11 @@ class _SettingsTabState extends State<_SettingsTab> {
 
     try {
       await UserPrefs.setThemeMode(enabled ? 'dark' : 'light');
-      await AppIconService.changeIcon(enabled);
+      // Launcher icon swap is driven by the themeNotifier listener installed
+      // in NudgeApp (main.dart). Native side uses DONT_KILL_APP so the
+      // foreground swap does not force-close the app.
     } catch (e) {
-      debugPrint('Unable to update app icon: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Theme updated. Launcher icon will sync on restart.'),
-          ),
-        );
-      }
+      debugPrint('Unable to persist theme: $e');
     } finally {
       if (mounted) setState(() => _themeIconUpdating = false);
     }

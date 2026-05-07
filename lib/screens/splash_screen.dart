@@ -93,8 +93,9 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: AppTheme.lightSurface,
+      backgroundColor: AppTheme.surface(isDark),
       body: Center(
         child: AnimatedBuilder(
           animation: _ctrl,
@@ -106,24 +107,24 @@ class _SplashScreenState extends State<SplashScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SvgPicture.asset(
-                    Theme.of(context).brightness == Brightness.dark
+                    isDark
                         ? 'assets/logos/dark_mode.svg'
                         : 'assets/logos/light_mode.svg',
                     width: 88,
                     height: 88,
                   ),
                   const SizedBox(height: 20),
-                  const Text('Nudge',
+                  Text('Nudge',
                       style: TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF1A1A2E),
+                          color: AppTheme.text(isDark),
                           letterSpacing: -1.5)),
                   const SizedBox(height: 6),
                   Text('Never miss what matters',
                       style: TextStyle(
                           fontSize: 14,
-                          color: Colors.grey.shade500,
+                          color: AppTheme.subtext(isDark),
                           fontWeight: FontWeight.w400)),
                 ],
               ),

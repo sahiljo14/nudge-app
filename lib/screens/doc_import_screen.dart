@@ -162,7 +162,12 @@ class _DocImportScreenState extends State<DocImportScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
 
-    // Save document first
+    final p = _parsed;
+    final isMulti = _showTask && p != null && p.isMultiTask && p.subtasks.isNotEmpty;
+
+    // Save document first — one doc record holds the file regardless of how
+    // many tasks reference it. The doc.note still uses the user's edited
+    // single-task name when available, otherwise the raw prompt.
     final doc = NudgeDocument(
       filePath: _currentImagePath,
       mimeType: widget.mimeType,
@@ -174,9 +179,27 @@ class _DocImportScreenState extends State<DocImportScreen> {
     );
     final docId = await DBHelper.instance.createDocument(doc);
 
-    // Save linked task if user filled the prompt
-    int? taskId;
-    if (_showTask && _nameCtrl.text.trim().isNotEmpty) {
+    if (isMulti) {
+      int? firstTaskId;
+      for (final sub in p.subtasks) {
+        final task = Task(
+          name:     sub.taskName,
+          deadline: sub.deadline,
+          priority: sub.priority,
+          taskType: sub.taskType,
+          subject:  sub.subject.isNotEmpty ? sub.subject : _subject,
+          docId:    docId,
+        );
+        final id = await DBHelper.instance.createTask(task);
+        final saved = task.copyWith(id: id);
+        await NotificationService.instance.scheduleReminders(saved);
+        firstTaskId ??= id;
+      }
+      if (firstTaskId != null) {
+        await DBHelper.instance.updateDocument(
+            doc.copyWith(id: docId, taskId: firstTaskId));
+      }
+    } else if (_showTask && _nameCtrl.text.trim().isNotEmpty) {
       final task = Task(
         name:     _nameCtrl.text.trim(),
         deadline: _deadline,
@@ -185,11 +208,10 @@ class _DocImportScreenState extends State<DocImportScreen> {
         subject:  _subject,
         docId:    docId,
       );
-      taskId = await DBHelper.instance.createTask(task);
+      final taskId = await DBHelper.instance.createTask(task);
       final savedTask = task.copyWith(id: taskId);
       await NotificationService.instance.scheduleReminders(savedTask);
 
-      // Link task back to doc
       await DBHelper.instance.updateDocument(
           doc.copyWith(id: docId, taskId: taskId));
     }
@@ -393,11 +415,11 @@ class _DocImportScreenState extends State<DocImportScreen> {
             ],
 
             // ── What + when prompt ─────────────────────────────────────
-            const Text("What's this about?",
+            Text("What's this about?",
                 style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A2E),
+                    color: AppTheme.text(isDark),
                     letterSpacing: -0.4)),
             const SizedBox(height: 4),
             Text(_ocrText.isNotEmpty
@@ -423,8 +445,8 @@ class _DocImportScreenState extends State<DocImportScreen> {
                   maxLines: 4,
                   minLines: 2,
                   textCapitalization: TextCapitalization.sentences,
-                  style: const TextStyle(
-                      fontSize: 15, color: Color(0xFF1A1A2E)),
+                  style: TextStyle(
+                      fontSize: 15, color: AppTheme.text(isDark)),
                   decoration: InputDecoration(
                     hintText: _ocrText.isNotEmpty
                         ? 'Extracted text is above. Edit or add context here…'
@@ -470,7 +492,18 @@ class _DocImportScreenState extends State<DocImportScreen> {
             ),
 
             // ── Task review ────────────────────────────────────────────
-            if (_showTask) ...[
+            if (_showTask &&
+                _parsed != null &&
+                _parsed!.isMultiTask &&
+                _parsed!.subtasks.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Divider(color: AppTheme.border(isDark)),
+              const SizedBox(height: 16),
+              _DocMultiTaskBanner(count: _parsed!.subtasks.length),
+              const SizedBox(height: 12),
+              ..._parsed!.subtasks.map(
+                  (s) => _DocMultiTaskTile(parsed: s, isDark: isDark)),
+            ] else if (_showTask) ...[
               const SizedBox(height: 20),
               Divider(color: AppTheme.border(isDark)),
               const SizedBox(height: 16),
@@ -487,10 +520,10 @@ class _DocImportScreenState extends State<DocImportScreen> {
                 controller: _nameCtrl,
                 maxLines: 2,
                 textCapitalization: TextCapitalization.sentences,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1A1A2E)),
+                    color: AppTheme.text(isDark)),
                 decoration: const InputDecoration(hintText: 'Task name'),
               ),
 
@@ -594,10 +627,10 @@ class _DocImportScreenState extends State<DocImportScreen> {
                           Text(
                             DateFormat('EEEE, d MMMM yyyy')
                                 .format(_deadline),
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF1A1A2E)),
+                                color: AppTheme.text(isDark)),
                           ),
                           Text(
                             DateFormat('h:mm a').format(_deadline),
@@ -625,9 +658,13 @@ class _DocImportScreenState extends State<DocImportScreen> {
                     ? const SizedBox(width: 20, height: 20,
                     child: CircularProgressIndicator(
                         color: Colors.white, strokeWidth: 2))
-                    : Text(_showTask
-                    ? 'Save doc + task'
-                    : 'Save document only'),
+                    : Text(
+                    _showTask
+                        ? (_parsed?.isMultiTask == true &&
+                                (_parsed?.subtasks.isNotEmpty ?? false)
+                            ? 'Save doc + ${_parsed!.subtasks.length} tasks'
+                            : 'Save doc + task')
+                        : 'Save document only'),
               ),
             ),
             if (!_showTask) ...[
@@ -701,6 +738,104 @@ class _ActionChip extends StatelessWidget {
               color: AppTheme.primary)),
         ]),
       ),
+    );
+  }
+}
+
+class _DocMultiTaskBanner extends StatelessWidget {
+  final int count;
+  const _DocMultiTaskBanner({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.layers_rounded, size: 18, color: AppTheme.primary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '$count tasks detected — all linked to this document',
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primary),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _DocMultiTaskTile extends StatelessWidget {
+  final ParsedTask parsed;
+  final bool isDark;
+  const _DocMultiTaskTile({required this.parsed, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final subColor = AppTheme.subjectColor(
+        parsed.subject.isNotEmpty ? parsed.subject : 'default');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color ?? AppTheme.lightCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border(isDark)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 36, height: 36,
+          decoration: BoxDecoration(
+            color: subColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(AppTheme.taskTypeIcon(parsed.taskType),
+              size: 18, color: subColor),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(parsed.taskName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.text(isDark))),
+              const SizedBox(height: 2),
+              Text(
+                  '${DateFormat('EEE, d MMM').format(parsed.deadline)} · '
+                  '${DateFormat('h:mm a').format(parsed.deadline)}'
+                  '${parsed.subject.isNotEmpty ? ' · ${parsed.subject}' : ''}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.subtext(isDark))),
+            ],
+          ),
+        ),
+        if (parsed.priority == 'urgent')
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.alert.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text('Urgent',
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.alert)),
+          ),
+      ]),
     );
   }
 }

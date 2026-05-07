@@ -22,6 +22,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:icon="@mipmap/ic_launcher_light"
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
@@ -72,8 +73,9 @@
 
         </activity>
 
+        <!-- Exactly one alias is enabled at a time; toggled by MainActivity. -->
         <activity-alias
-            android:name=".MainActivityLight"
+            android:name=".LauncherLight"
             android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_light"
@@ -86,7 +88,7 @@
         </activity-alias>
 
         <activity-alias
-            android:name=".MainActivityDark"
+            android:name=".LauncherDark"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_dark"

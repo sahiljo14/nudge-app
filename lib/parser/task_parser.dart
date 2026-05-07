@@ -25,6 +25,33 @@
 //      preventing under-counting that caused multi-task inputs to be parsed
 //      as single tasks.
 //
+// [F15] CONTEXTUAL INHERITANCE — multi-task subtasks with no detected
+//      deadline now inherit the previous subtask's deadline; subtasks with
+//      no detected subject inherit the previous subtask's subject. Handles
+//      messages like "kal X aur Y bhi" where Y is implicitly due "kal" and
+//      shares X's subject (e.g. AIML) — without losing standalone tasks
+//      that have their own date or subject.
+//
+// [F16] HEADER TYPE PROPAGATION — when the leading date-less fragment of a
+//      multi-task input contains a task-type keyword (e.g. "My Exam" atop
+//      a list of OCR'd timetable rows), it is now prepended to every dated
+//      row so each subtask inherits the type. Headers without a type word
+//      retain the prior single-coalesce behaviour.
+//
+// [F17] HINGLISH HYGIENE — elongated repeating chars are collapsed to 2
+//      ("laanaaa" → "laanaa") before any matching, so stretched fillers
+//      survive word-boundary regexes downstream. Standalone 4-digit years
+//      are stripped from task names. Common Hinglish fillers ("guys",
+//      "bhi", "karke", "aana", "laana", "complete", "my") added to the
+//      strip list, plus exam-type variants ("lca", "lpa", "exams"),
+//      abbrev caps ("AIML", "LCA", "LPA", "IoT"), and an "IoT" subject.
+//
+// [F18] OCR ROW MERGING — a preprocessor coalesces multi-line rows from
+//      OCR'd timetables: non-dated continuation lines (time, subject) are
+//      attached to the preceding dated anchor so each logical row reaches
+//      the splitter as one fragment, instead of inflating the task count
+//      with 2–3 fragments per row.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ParsedTask {
@@ -57,10 +84,57 @@ class TaskParser {
   // PUBLIC API
   // ═══════════════════════════════════════════════════════════════
 
+  /// Hard cap on the number of subtasks emitted from a single message.
+  /// Excess fragments past this limit are dropped (see _splitMultiTask) so
+  /// downstream UI never has to render an unbounded list, and parsing stays
+  /// O(n) for typical student-message lengths. Surfaces the limit so callers
+  /// can show a "showing first N of M" hint if they need to.
+  static const int kMaxSubtasks = 10;
+
   static ParsedTask parse(String raw) {
+    // [F17] Normalise elongated/repeated characters BEFORE any matching so
+    // Hinglish stretched fillers ("laanaaa") survive word-boundary regexes
+    // downstream. Conservative: 3+ identical chars collapse to 2, leaving
+    // common English/Hindi doubles ("good", "see", "aana") untouched.
+    raw = _normalizeElongated(raw);
+
+    // [F18] Merge OCR-style multi-line rows. ML Kit emits each cell of a
+    // timetable image on its own line, so a single exam row's date, time,
+    // and subject end up split across 2–3 entries. This preprocessor
+    // re-attaches non-dated continuation lines to the preceding dated line
+    // so the multi-task splitter sees one fragment per row.
+    raw = _mergeOcrRows(raw);
+
     final parts = _splitMultiTask(raw);
     if (parts.length > 1) {
-      final subtasks = parts.map(_parseSingle).toList();
+      final subtasks = <ParsedTask>[];
+      for (var i = 0; i < parts.length; i++) {
+        var t = _parseSingle(parts[i]);
+        // [F15] Tail-fragment inheritance: when a fragment has no detected
+        // deadline of its own (typical for "...aur Y bhi" continuations),
+        // pull the previous subtask's deadline forward. Subject inherits
+        // separately whenever the current fragment doesn't name one — so a
+        // sibling task whose own date IS detected still gets the prior
+        // subject (e.g. "AIML LCA next week. Kal assignment …" → the
+        // assignment inherits AIML).
+        if (i > 0) {
+          final prev            = subtasks.last;
+          final inheritDeadline = t.deadlineLabel == 'Unknown';
+          final inheritSubject  = t.subject.isEmpty && prev.subject.isNotEmpty;
+          if (inheritDeadline || inheritSubject) {
+            t = ParsedTask(
+              taskName:      t.taskName,
+              taskType:      t.taskType,
+              deadline:      inheritDeadline ? prev.deadline      : t.deadline,
+              deadlineLabel: inheritDeadline ? prev.deadlineLabel : t.deadlineLabel,
+              priority:      t.priority,
+              subject:       inheritSubject  ? prev.subject       : t.subject,
+              confidence:    t.confidence,
+            );
+          }
+        }
+        subtasks.add(t);
+      }
       return ParsedTask(
         taskName:      'Multiple tasks',
         taskType:      'assignment',
@@ -76,6 +150,59 @@ class TaskParser {
       );
     }
     return _parseSingle(raw);
+  }
+
+  /// [F17] Collapse 3+ identical consecutive characters to 2.
+  /// Used to normalise elongated Hinglish fillers ("laanaaa" → "laanaa")
+  /// so they survive word-boundary stripping. Conservative by design:
+  /// 2-char repeats are left intact, preserving common English ("good",
+  /// "week") and Hindi ("aana", "laana") spellings untouched.
+  static String _normalizeElongated(String s) =>
+      s.replaceAllMapped(RegExp(r'(.)\1{2,}'), (m) => '${m[1]}${m[1]}');
+
+  /// [F18] Coalesce non-dated continuation lines into the preceding dated
+  /// line. Targets OCR'd timetables where each row's date, time, and
+  /// subject land on separate lines (e.g. "03 Jun, 2026" + "04:00 PM" +
+  /// "AIML"). A line carrying its OWN deadline word (weekday, kal, next
+  /// week, …) is NOT coalesced — it stands as a separate task. Lines with
+  /// no signal AND no preceding dated buffer (headers like "My Exam")
+  /// pass through untouched so F16 can still propagate them.
+  static String _mergeOcrRows(String raw) {
+    final lines = raw.split('\n');
+    if (lines.length < 3) return raw;
+
+    bool hasDate(String s) =>
+        _ordinalRe.hasMatch(s) ||
+        _numericDateRe.hasMatch(s) ||
+        _monthRe.hasMatch(s.toLowerCase());
+
+    bool hasOwnSignal(String s) {
+      final lower = s.toLowerCase();
+      return [..._today, ..._tomorrow, ..._dayAfter, ..._weekdays.keys]
+              .any((w) => _has(lower, w)) ||
+          _extraSignalRe.hasMatch(lower);
+    }
+
+    final merged = <String>[];
+    String buffer = '';
+    for (final line in lines) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      if (hasDate(t)) {
+        if (buffer.isNotEmpty) merged.add(buffer);
+        buffer = t;
+      } else if (buffer.isNotEmpty && !hasOwnSignal(t)) {
+        buffer = '$buffer $t';
+      } else {
+        if (buffer.isNotEmpty) {
+          merged.add(buffer);
+          buffer = '';
+        }
+        merged.add(t);
+      }
+    }
+    if (buffer.isNotEmpty) merged.add(buffer);
+    return merged.join('\n');
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -111,6 +238,16 @@ class TaskParser {
     // Month-name occurrences each count as a distinct deadline signal.
     signals += _monthRe.allMatches(text).length;
 
+    // [F11] Numeric DD/MM(/YY|YYYY) — each occurrence is a distinct signal.
+    // Disambiguates messages like "phy hw 5/4, chem 12/4" that previously
+    // had no detectable deadline anchor and stayed single-task.
+    signals += _numericDateRe.allMatches(text).length;
+
+    // [F14] Multi-word future-range phrases (next week, weekend, end of
+    // month, "in 3 days", …) — each occurrence is a distinct signal so
+    // mixed inputs like "next week … kal …" reach the multi-task path.
+    signals += _extraSignalRe.allMatches(text).length;
+
     if (signals < 2) return [raw];
 
     // [F6] Extended splitters: period-sentence boundary and pipe separator
@@ -119,47 +256,118 @@ class TaskParser {
     // trailing aside "Submit by Friday. No extensions." stays single).
     //
     // [F8] Helper: does a text fragment contain any deadline signal?
+    // [F11] Numeric DD/MM(/YY|YYYY) also counts as a deadline signal so that
+    // a fragment anchored only by "5/4" survives the dated-fragment filter.
     bool hasSignal(String p) {
       final pt = p.toLowerCase();
       return [..._today, ..._tomorrow, ..._dayAfter, ..._weekdays.keys]
-          .any((w) => _has(pt, w)) || _monthRe.hasMatch(pt);
+              .any((w) => _has(pt, w)) ||
+          _monthRe.hasMatch(pt) ||
+          _numericDateRe.hasMatch(pt) ||
+          _extraSignalRe.hasMatch(pt);
     }
 
-    final rawParts = raw
-        .split(RegExp(
-        r'\s*,\s*|\n+|\s*;\s*|\s+aur\s+|\s+and\s+|\s+ani\s+|\.\s+|\s*\|\s*',
-        caseSensitive: false))
-        .map((p) => p.trim())
-        .where((p) => p.length > 5)
+    // [F11] Strip leading bullet/number markers from each candidate so they
+    // don't bleed into the task name during _buildName. Common in student
+    // task lists copied out of WhatsApp / class notes.
+    final bulletRe = RegExp(r'^\s*(?:[\-*•·▪►◦‣⁃]+|\d+[.)])\s+');
+
+    // [F14] Two-tier splitter:
+    //   strong = explicit list/conjunction tokens (newline, ';', '|', and
+    //            Hindi/Marathi 'and'-words). These ALWAYS split into distinct
+    //            tasks — even when the second clause has no deadline of its
+    //            own — because the conjunction itself is strong evidence the
+    //            user listed multiple items. The signal-less tail then
+    //            inherits a sensible default downstream (+1 day).
+    //   weak   = comma and sentence-period. These split *within* a strong
+    //            block but date-less fragments coalesce into the preceding
+    //            dated fragment to avoid breaking up "Submit by Friday. No
+    //            extensions." or splitting "03 Jun, 2026" between month and
+    //            year.
+    final strongSplitRe = RegExp(
+      r'\n+|\s*;\s*|\s*\|\s*|'
+      r'\s+aur\s+|\s+and\s+|\s+ani\s+|\s+tatha\s+|\s+evam\s+|\s+va\s+',
+      caseSensitive: false,
+    );
+    final weakSplitRe = RegExp(r'\s*,\s*|\.\s+');
+
+    final blocks = raw
+        .split(strongSplitRe)
+        .map((b) => b.trim())
+        .where((b) => b.isNotEmpty)
         .toList();
 
-    if (rawParts.length < 2) return [raw];
-
-    // [F8] Coalesce date-less fragments into their nearest preceding dated part.
-    // Prevents over-splitting on intra-task detail text like "numericals." or
-    // "open book." that follows a date-anchored line in a student message.
     final parts = <String>[];
-    for (final p in rawParts) {
-      if (hasSignal(p) || parts.isEmpty) {
-        parts.add(p);
+    for (final block in blocks) {
+      final sub = block
+          .split(weakSplitRe)
+          .map((p) => p.trim().replaceFirst(bulletRe, '').trim())
+          .where((p) => p.length > 5)
+          .toList();
+      if (sub.isEmpty) {
+        // Block is too short to stand alone (e.g. a 4-char header like
+        // "AIML"). Keep the trimmed block so F9 can still merge it into
+        // the next dated block instead of dropping it silently.
+        if (block.length > 0) parts.add(block);
+        continue;
+      }
+
+      // [F8] Within-block coalesce: date-less weak fragments fold into the
+      // preceding dated fragment of the SAME block. Cross-block coalesce
+      // is intentionally not done — strong delimiters mean distinct tasks.
+      final blockParts = <String>[];
+      for (final p in sub) {
+        if (hasSignal(p) || blockParts.isEmpty) {
+          blockParts.add(p);
+        } else {
+          blockParts[blockParts.length - 1] = '${blockParts.last} $p';
+        }
+      }
+      parts.addAll(blockParts);
+    }
+
+    if (parts.length < 2) return [raw];
+
+    // [F9][F16] If the very first fragment is a date-less header (e.g.
+    // "*AIML*", "Chemistry:", "My Exam"), coalesce it forward so it doesn't
+    // inflate the task count. [F16] When the header carries a task-type
+    // keyword (exam, test, etc.), prepend it to ALL subsequent dated parts
+    // so each subtask inherits the type — common in OCR'd timetables where
+    // the title row ("My Exam") precedes multiple date rows. Headers
+    // without a type word retain the prior single-coalesce behaviour to
+    // avoid attaching arbitrary preambles to every row.
+    if (parts.length >= 2 && !hasSignal(parts.first)) {
+      final header = parts.first;
+      parts.removeAt(0);
+      if (_headerTypeRe.hasMatch(header)) {
+        for (var i = 0; i < parts.length; i++) {
+          parts[i] = '$header ${parts[i]}';
+        }
       } else {
-        parts[parts.length - 1] = '${parts.last} $p';
+        parts[0] = '$header ${parts[0]}';
       }
     }
 
-    // [F9] If the very first fragment is a date-less header (e.g. "*AIML*",
-    // "Chemistry:"), coalesce it forward into the first dated part so it
-    // doesn't inflate the task count by one.
-    if (parts.length >= 2 && !hasSignal(parts.first)) {
-      parts[1] = '${parts.first} ${parts[1]}';
-      parts.removeAt(0);
-    }
-
-    // Each part must contain at least one deadline signal to be a real subtask.
-    // If only one part has a deadline, it's a single task with a comma/period.
     if (parts.length < 2) return [raw];
+
+    // [F14] We require at least one part to carry a deadline signal — if
+    // none do, treat the whole input as a single task. With within-block
+    // coalesce, multi-fragment inputs that have only one signal naturally
+    // collapse to one part anyway, so this guard mostly catches degenerate
+    // cases where signals were false positives. Strong-split signal-less
+    // tails (like "manuals bhi …" inheriting from a preceding "kal" task)
+    // are preserved — they fall back to default deadline downstream.
     final partsWithDeadline = parts.where(hasSignal).length;
-    if (partsWithDeadline < 2) return [raw];
+    if (partsWithDeadline < 1) return [raw];
+
+    // [F13] Cap the number of detected subtasks. Prevents pathological inputs
+    // (huge OCR'd lists, accidental floods of commas) from creating dozens of
+    // entries downstream. We keep the first kMaxSubtasks fragments — the
+    // ordering of the source message is preserved so the user still sees the
+    // expected leading items.
+    if (parts.length > kMaxSubtasks) {
+      return parts.sublist(0, kMaxSubtasks);
+    }
 
     return parts;
   }
@@ -211,6 +419,8 @@ class TaskParser {
     'php':   'PHP',   'ui':    'UI',    'ux':    'UX',
     'api':   'API',   'http':  'HTTP',  'oop':   'OOP',
     'oops':  'OOPS',  'jdbc':  'JDBC',  'mvc':   'MVC',
+    // [F17]
+    'iot':   'IoT',   'aiml':  'AIML',  'lca':   'LCA',  'lpa':   'LPA',
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -239,6 +449,8 @@ class TaskParser {
     'parso', 'day after tomorrow', 'parva', 'paradnya',
     // [F3] additions
     'parson', 'parsun',
+    // [F12] additions
+    'parsoo',
   ];
 
   // ── Weekdays ───────────────────────────────────────────────────
@@ -318,6 +530,58 @@ class TaskParser {
   static final _tarikhRe = RegExp(
       r'\b(\d{1,2})\s*(?:tarikh|tārīkh)\b', caseSensitive: false);
 
+  // [F11] Numeric date — "5/4", "05-04-2026", "5.4.26"
+  // The Indian convention is DD/MM(/YY|YYYY). Time-of-day patterns use ":" so
+  // they don't collide with "/", "-", or ".".
+  static final _numericDateRe = RegExp(
+    r'\b(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?\b',
+  );
+
+  // [F11] "in N hours / hrs / ghante / ghanta" — short-horizon deadlines.
+  static final _reHours = RegExp(
+    r'\b(?:within|in|mein|me|after)?\s*(\d+)\s*(?:hours?|hrs?|ghante|ghanta)\b',
+    caseSensitive: false,
+  );
+
+  // [F14] Multi-word future-range deadline phrases that aren't already counted
+  // by _today/_tomorrow/_dayAfter/_weekdays/_monthRe/_numericDateRe. Matters
+  // most for the multi-task signal count: without this, a message like
+  // "AIML LCA next week hai. Kal assignment …" would only count `kal` as one
+  // signal, fail the `signals >= 2` gate, and stay merged as a single task.
+  static final _extraSignalRe = RegExp(
+    r'\b(?:'
+    r'next\s+(?:week|month)|'
+    r'this\s+week|'
+    r'end\s+of\s+(?:week|month)|'
+    r'month\s+end|mahina\s+end|'
+    r'agle\s+hafte|agli\s+hafte|agle\s+mahine|'
+    r'pudhcha\s+mahina|'
+    r'ya\s+aathavdyat|'
+    r'weekend|'
+    r'in\s+\d+\s+(?:days?|din|divas|hours?|hrs?|ghante|ghanta|weeks?|hafte)'
+    r')\b',
+    caseSensitive: false,
+  );
+
+  // [F14] Standalone 4-digit year (1900–2099). Stripped from task titles so
+  // OCR rows like "03 Jun, 2026 …" don't carry the year forward into the
+  // user-visible task name. The date itself is captured by _ordinalRe earlier.
+  static final _yearRe = RegExp(r'\b(?:19|20)\d{2}\b');
+
+  // [F16] Header keywords that mark a leading date-less fragment as a
+  // section title to propagate to every subsequent dated row. Used by
+  // `_splitMultiTask` to enable per-row type inheritance — e.g. "My Exam"
+  // atop an OCR'd timetable so each row below becomes an exam task.
+  static final _headerTypeRe = RegExp(
+    r'\b(exam|exams|test|quiz|viva|midsem|endsem|assignment|project|'
+    r'schedule|timetable|time\s+table|practical|practicals|lab)\b',
+    caseSensitive: false,
+  );
+
+  // [F11] Midnight maps to end-of-day (23:59) — matches the conventional
+  // "deadline at midnight" student-message reading.
+  static final _reMidnight = RegExp(r'\bmidnight\b', caseSensitive: false);
+
   // ═══════════════════════════════════════════════════════════════
   // TASK TYPES
   // ═══════════════════════════════════════════════════════════════
@@ -328,10 +592,13 @@ class TaskParser {
       'proj', 'practical', 'lab', 'coursework', 'practicals',
     ],
     'exam': [
-      'exam', 'exm', 'test', 'quiz', 'viva', 'oral', 'paper',
+      'exam', 'exams', 'exm', 'test', 'quiz', 'viva', 'oral', 'paper',
       'midsem', 'mid sem', 'endsem', 'end sem',
       'unit test', 'ut', 'class test', 'ct', 'final', 'finals',
       'assessment',
+      // [F17] Lab/Lecture Continuous Assessment & Lab Performance
+      // Assessment — common Indian engineering curriculum exam variants.
+      'lca', 'lpa',
     ],
     'submission': [
       'submit', 'submission', 'sbmit', 'jama', 'upload',
@@ -355,11 +622,11 @@ class TaskParser {
   static const Map<String, List<String>> _subjects = {
     'Operating Systems':    ['os', 'operating system', 'operating systems'],
     'Mathematics':          ['maths', 'math', 'mathematics', 'calculus',
-      'algebra', 'stats', 'statistics', 'ganit'],
+      'algebra', 'stats', 'statistics', 'ganit', 'discrete'],
     'Database Management':  ['dbms', 'database', 'db', 'sql', 'mysql',
       'mongodb', 'postgres'],
     'Data Structures':      ['dsa', 'data structure', 'data structures',
-      'algorithms', 'algo'],
+      'algorithms', 'algo', 'ds'],
     'Computer Networks':    ['cn', 'network', 'networks', 'computer network',
       'networking'],
     'Physics':              ['physics', 'phy', 'mechanics', 'optics',
@@ -369,13 +636,18 @@ class TaskParser {
     'English':              ['english', 'communication', 'writing', 'grammar'],
     'Software Engineering': ['se', 'software engineering', 'sdlc', 'agile'],
     'Machine Learning':     ['ml', 'machine learning', 'deep learning',
-      'neural', 'ai'],
+      'neural', 'ai', 'aiml'],
     'Web Development':      ['web', 'html', 'css', 'javascript', 'react',
       'flask', 'django', 'nodejs'],
     'Computer Graphics':    ['cg', 'graphics', 'computer graphics', 'opengl'],
-    'Theory of Computation':['toc', 'automata', 'compiler'],
+    'Theory of Computation':['toc', 'automata', 'compiler', 'compilers'],
     'Java':                 ['java', 'oops', 'oop', 'object oriented'],
     'Python':               ['python', 'py'],
+    'Electronics':          ['electronics', 'edc', 'analog', 'digital electronics'],
+    'Economics':            ['economics', 'eco', 'micro economics', 'macro economics'],
+    // [F17] OCR'd timetables commonly list IoT exams; keep it short so the
+    // abbrev cap maps cleanly when it appears in a task name.
+    'IoT':                  ['iot', 'internet of things'],
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -405,6 +677,12 @@ class TaskParser {
   // [F10] "at N" / "at N:MM" — e.g. "gym at 7", "meeting at 10:30"
   static final _reAt = RegExp(
     r'\bat\s+(\d{1,2})(?:[:]( \d{2}))?\b',
+    caseSensitive: false,
+  );
+  // [F12] "@N" / "@N:MM" / "@5pm" shorthand — common in WhatsApp chats.
+  // Captured ahead of the digits-only fallback so the colon group is optional.
+  static final _reAtSign = RegExp(
+    r'@\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?\b',
     caseSensitive: false,
   );
 
@@ -447,6 +725,14 @@ class TaskParser {
     'hai','he','ahe','hoga',
     'note','remember','yaad rakhna','lakshat thev',
     'urgent','asap','jaldi','important',
+    // [F17] Hinglish casual fillers that commonly clutter task descriptions.
+    // Stripped from the visible task name; keeping them in the parser's
+    // signal counts is fine since they don't carry deadline/subject info.
+    'guys','yaar','bro','my',
+    'bhi',
+    'karke aana','karke laana','karke laanaa',
+    'karke','aana','laana','laanaa',
+    'complete karke','complete karna','complete',
   ];
 
   // ═══════════════════════════════════════════════════════════════
@@ -557,6 +843,29 @@ class TaskParser {
           ? '0' : atm.group(2)!.trim()) ?? 0;
       h = _indiaAmbiguousHour(h, text);
       return {'h': h, 'm': mn, 'found': true};
+    }
+
+    // [F12] "@5", "@5:30", "@5pm" shorthand. Honors explicit am/pm when
+    // present; otherwise the India heuristic fills in the conventional PM.
+    final ats = _reAtSign.firstMatch(text);
+    if (ats != null) {
+      int h = int.parse(ats.group(1)!);
+      final mn = int.tryParse(ats.group(2) ?? '0') ?? 0;
+      final ap = (ats.group(3) ?? '').toLowerCase();
+      if (ap == 'pm' && h < 12) {
+        h += 12;
+      } else if (ap == 'am' && h == 12) {
+        h = 0;
+      } else if (ap.isEmpty) {
+        h = _indiaAmbiguousHour(h, text);
+      }
+      return {'h': h, 'm': mn, 'found': true};
+    }
+
+    // [F11] Midnight → end of day (23:59). Treats "submit by midnight" as
+    // the conventional student-message deadline.
+    if (_reMidnight.hasMatch(text)) {
+      return {'h': 23, 'm': 59, 'found': true};
     }
 
     // Context words only
@@ -707,6 +1016,16 @@ class TaskParser {
       }
     }
 
+    // ── [F11] "in N hours" — short-horizon deadlines ─────────
+    final hrm = _reHours.firstMatch(text);
+    if (hrm != null) {
+      final n = int.tryParse(hrm.group(1) ?? '') ?? 0;
+      if (n > 0 && n <= 72) {
+        final d = now.add(Duration(hours: n));
+        return {'deadline': d, 'label': 'In $n hour${n == 1 ? '' : 's'}'};
+      }
+    }
+
     // ── Ordinal date: "5th April" / "April 5" ─────────────────
     final om = _ordinalRe.firstMatch(text);
     if (om != null) {
@@ -724,6 +1043,25 @@ class TaskParser {
         'deadline': DateTime(yr, mon, day, h, m),
         'label': '$day ${_monthName(mon)}',
       };
+    }
+
+    // ── [F11] Numeric date "5/4", "05-04-2026" ───────────────
+    // Indian DD/MM(/YY|YYYY) convention. Scoped after ordinalRe so word
+    // dates win when both forms are present.
+    final ndm = _numericDateRe.firstMatch(text);
+    if (ndm != null) {
+      final day = int.parse(ndm.group(1)!);
+      final mon = int.parse(ndm.group(2)!);
+      if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
+        var yr = ndm.group(3) != null ? int.parse(ndm.group(3)!) : now.year;
+        if (yr < 100) yr += 2000;
+        var d = DateTime(yr, mon, day, h, m);
+        // Year omitted and the literal date already passed → roll forward.
+        if (ndm.group(3) == null && d.isBefore(now)) {
+          d = DateTime(yr + 1, mon, day, h, m);
+        }
+        return {'deadline': d, 'label': '$day ${_monthName(mon)}'};
+      }
     }
 
     // ── "5 tarikh" ────────────────────────────────────────────
@@ -836,10 +1174,16 @@ class TaskParser {
     name = name
         .replaceAll(_re12h, ' ').replaceAll(_re24h, ' ')
         .replaceAll(_reBaje, ' ').replaceAll(_reBefore, ' ')
+        .replaceAll(_reAt, ' ').replaceAll(_reAtSign, ' ')
         .replaceAll(_reSubah, ' ').replaceAll(_reShaam, ' ')
         .replaceAll(_reRaat, ' ').replaceAll(_reDopahar, ' ')
         .replaceAll(_reDays, ' ').replaceAll(_reWeeks, ' ')
-        .replaceAll(_ordinalRe, ' ').replaceAll(_tarikhRe, ' ');
+        .replaceAll(_reHours, ' ').replaceAll(_reMidnight, ' ')
+        .replaceAll(_ordinalRe, ' ').replaceAll(_tarikhRe, ' ')
+        .replaceAll(_numericDateRe, ' ')
+        // [F17] Strip standalone 4-digit years (e.g. "2026" left over from
+        // OCR'd "03 Jun, 2026") so they don't bleed into the task name.
+        .replaceAll(_yearRe, ' ');
 
     // Remove filler words
     for (final w in _strip) {

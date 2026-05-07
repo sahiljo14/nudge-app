@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
-import 'services/app_icon_service.dart';
 import 'services/notification_service.dart';
 import 'services/user_prefs.dart';
 import 'theme/app_theme.dart';
@@ -16,11 +15,6 @@ void main() async {
   final savedTheme = await UserPrefs.getThemeMode();
   final isDark = savedTheme == 'dark';
   themeNotifier.value = isDark ? ThemeMode.dark : ThemeMode.light;
-  try {
-    await AppIconService.changeIcon(isDark);
-  } catch (e) {
-    debugPrint('Unable to sync app icon: $e');
-  }
   // Start notification init in background — does not block first frame.
   // The splash screen provides a 1500ms buffer before any task can be created,
   // and every schedule path guards with `if (!_ready) await init()`.
