@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Data Deletion — Nudge</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1a202c;
+    background: #f7fafc;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 20px 80px;
+  }
+  .back-link {
+    display: inline-block;
+    margin-bottom: 24px;
+    color: #2563eb;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .back-link:hover { text-decoration: underline; }
+  .page-header { margin-bottom: 32px; }
+  .page-header h1 { font-size: 2.1rem; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .page-header p { color: #4a5568; font-size: 1rem; }
+
+  .highlight {
+    background: #f0fff4;
+    border: 1px solid #c6f6d5;
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 28px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .highlight-icon { font-size: 1.4rem; flex-shrink: 0; }
+  .highlight p { margin: 0; font-size: 0.95rem; color: #22543d; }
+  .highlight strong { color: #276749; }
+
+  h2 { font-size: 1.25rem; margin: 32px 0 14px; color: #1a202c; }
+
+  .method-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  @media (max-width: 540px) { .method-grid { grid-template-columns: 1fr; } }
+
+  .method-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .method-card.primary { border-color: #bee3f8; background: #ebf8ff; }
+  .method-tag {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 99px;
+    margin-bottom: 10px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .tag-recommended { background: #c6f6d5; color: #276749; }
+  .tag-instant     { background: #bee3f8; color: #2a69ac; }
+  .tag-partial     { background: #feebc8; color: #7b341e; }
+  .tag-support     { background: #e9d8fd; color: #553c9a; }
+
+  .method-card h3 { font-size: 1rem; margin-bottom: 8px; color: #1a202c; }
+  .method-card p  { font-size: 0.9rem; color: #4a5568; margin-bottom: 10px; }
+  .method-card ol { padding-left: 18px; }
+  .method-card li { font-size: 0.9rem; color: #4a5568; margin-bottom: 6px; }
+
+  .what-deleted {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+  .table-head {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    background: #f7fafc;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 10px 16px;
+  }
+  .table-head span { font-size: 0.8rem; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: 0.04em; }
+  .table-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    padding: 10px 16px;
+    border-bottom: 1px solid #f0f4f8;
+    align-items: center;
+  }
+  .table-row:last-child { border-bottom: none; }
+  .table-row span { font-size: 0.9rem; color: #2d3748; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 99px;
+  }
+  .badge-yes    { background: #c6f6d5; color: #276749; }
+  .badge-no     { background: #fed7d7; color: #9b2c2c; }
+  .badge-na     { background: #e2e8f0; color: #718096; }
+
+  .contact-box {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+  }
+  .contact-box h3 { font-size: 1rem; margin-bottom: 12px; }
+  .contact-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 0.95rem; }
+  .contact-label { color: #718096; min-width: 120px; }
+  .contact-value { color: #2d3748; font-weight: 500; }
+  .contact-value a { color: #2563eb; text-decoration: none; }
+
+  .no-server-box {
+    background: #fffbeb;
+    border: 1px solid #fbd38d;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+  }
+  .no-server-box p { margin: 0; font-size: 0.95rem; color: #744210; }
+  .no-server-box strong { color: #7b341e; }
+
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid #e2e8f0;
+    color: #718096;
+    font-size: 0.875rem;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <a class="back-link" href="index.html">← Back to home</a>
+
+  <div class="page-header">
+    <h1>Data Deletion</h1>
+    <p>How to remove all your Nudge data — instantly, at any time.</p>
+  </div>
+
+  <div class="highlight">
+    <div class="highlight-icon">🔒</div>
+    <p><strong>Nudge is 100% offline.</strong> There are no user accounts and no servers. All your data exists only on your device. You have complete control to delete it instantly without contacting us.</p>
+  </div>
+
+  <h2>Choose a deletion method</h2>
+
+  <div class="method-grid">
+    <div class="method-card primary">
+      <span class="method-tag tag-recommended">Recommended</span>
+      <h3>Uninstall the app</h3>
+      <p>Completely and permanently removes all Nudge data from your device.</p>
+      <ol>
+        <li>Long-press the Nudge app icon</li>
+        <li>Tap <strong>Uninstall</strong></li>
+        <li>Confirm — all data is gone instantly</li>
+      </ol>
+    </div>
+
+    <div class="method-card">
+      <span class="method-tag tag-instant">Instant reset</span>
+      <h3>Clear app data</h3>
+      <p>Wipes all data but keeps the app installed.</p>
+      <ol>
+        <li>Go to <strong>Settings → Apps</strong></li>
+        <li>Tap <strong>Nudge</strong></li>
+        <li>Tap <strong>Storage → Clear Data</strong></li>
+        <li>Confirm — app resets to fresh state</li>
+      </ol>
+    </div>
+
+    <div class="method-card">
+      <span class="method-tag tag-partial">Partial</span>
+      <h3>Delete individual tasks</h3>
+      <p>Remove specific tasks without losing everything.</p>
+      <ol>
+        <li>Open Nudge → Tasks tab</li>
+        <li>Swipe left on any task</li>
+        <li>Tap <strong>Delete</strong> to confirm</li>
+      </ol>
+    </div>
+
+    <div class="method-card">
+      <span class="method-tag tag-support">Support</span>
+      <h3>Contact us</h3>
+      <p>Need help with deletion? Email us.</p>
+      <ol>
+        <li>Email <a href="mailto:agneon.labs@gmail.com">agneon.labs@gmail.com</a></li>
+        <li>Subject: <strong>Data Deletion Request</strong></li>
+        <li>We reply within 7 business days</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2>What gets deleted</h2>
+
+  <div class="what-deleted">
+    <div class="table-head">
+      <span>Data type</span>
+      <span>Uninstall / Clear data</span>
+      <span>On our servers</span>
+    </div>
+    <div class="table-row">
+      <span>Tasks &amp; deadlines</span>
+      <span><span class="badge badge-yes">✓ Deleted</span></span>
+      <span><span class="badge badge-na">N/A — never stored</span></span>
+    </div>
+    <div class="table-row">
+      <span>Profile name &amp; photo</span>
+      <span><span class="badge badge-yes">✓ Deleted</span></span>
+      <span><span class="badge badge-na">N/A — never stored</span></span>
+    </div>
+    <div class="table-row">
+      <span>Streak &amp; XP data</span>
+      <span><span class="badge badge-yes">✓ Deleted</span></span>
+      <span><span class="badge badge-na">N/A — never stored</span></span>
+    </div>
+    <div class="table-row">
+      <span>Scanned documents</span>
+      <span><span class="badge badge-yes">✓ Deleted</span></span>
+      <span><span class="badge badge-na">N/A — never uploaded</span></span>
+    </div>
+    <div class="table-row">
+      <span>App preferences</span>
+      <span><span class="badge badge-yes">✓ Deleted</span></span>
+      <span><span class="badge badge-na">N/A — never stored</span></span>
+    </div>
+    <div class="table-row">
+      <span>Voice recordings</span>
+      <span><span class="badge badge-na">Never stored by app</span></span>
+      <span><span class="badge badge-na">N/A — never recorded</span></span>
+    </div>
+    <div class="table-row">
+      <span>Analytics / logs</span>
+      <span><span class="badge badge-no">None — app has no analytics</span></span>
+      <span><span class="badge badge-no">None — no analytics SDK</span></span>
+    </div>
+  </div>
+
+  <div class="no-server-box">
+    <p><strong>Why we can't delete data "on our end"</strong> — Nudge has no servers, no databases, and no backend. We literally have no copy of your data to delete. Everything you create in Nudge lives only in your device's local storage.</p>
+  </div>
+
+  <h2>Contact for deletion requests</h2>
+  <div class="contact-box">
+    <h3>Data Deletion Support</h3>
+    <div class="contact-row">
+      <span class="contact-label">Email</span>
+      <span class="contact-value"><a href="mailto:agneon.labs@gmail.com">agneon.labs@gmail.com</a></span>
+    </div>
+    <div class="contact-row">
+      <span class="contact-label">Subject line</span>
+      <span class="contact-value">Data Deletion Request — Nudge</span>
+    </div>
+    <div class="contact-row">
+      <span class="contact-label">Response time</span>
+      <span class="contact-value">Within 7 business days</span>
+    </div>
+    <div class="contact-row">
+      <span class="contact-label">What to include</span>
+      <span class="contact-value">Brief description of your request</span>
+    </div>
+  </div>
+
+  <p style="color:#4a5568; font-size:0.95rem;">
+    This page satisfies Google Play's <strong>account deletion requirement</strong> for apps that allow users to create an in-app profile (name, avatar). Even though Nudge has no server-side accounts, this page provides a clear deletion path as required by Play Store policy effective December 2023.
+  </p>
+
+  <footer>© 2025 Sahil · <a href="privacy.html">Privacy Policy</a> · <a href="mailto:agneon.labs@gmail.com">agneon.labs@gmail.com</a></footer>
+</div>
+</body>
+</html>
