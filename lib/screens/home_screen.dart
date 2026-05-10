@@ -2098,6 +2098,17 @@ class _SettingsTabState extends State<_SettingsTab> {
     }
   }
 
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open link')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark   = widget.isDark;
@@ -2238,6 +2249,47 @@ class _SettingsTabState extends State<_SettingsTab> {
                 applicationName: 'Nudge',
                 applicationVersion: '1.0.0',
                 applicationLegalese: '© 2026 Nudge Team',
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          _SettingsSection(isDark: isDark, children: [
+            _SettingsRow(
+              icon: Icons.shield_outlined,
+              iconColor: const Color(0xFF534AB7),
+              title: 'Privacy Policy',
+              subtitle: 'How we handle your data',
+              isDark: isDark,
+              trailing: Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.subtext(isDark), size: 20),
+              onTap: () => _launchUrl(
+                'https://sahiljo14.github.io/nudge-app/privacy_policy.html',
+              ),
+            ),
+            Divider(color: AppTheme.border(isDark), height: 1, indent: 56),
+            _SettingsRow(
+              icon: Icons.help_outline_rounded,
+              iconColor: const Color(0xFF185FA5),
+              title: 'Support & Help',
+              subtitle: 'FAQs and troubleshooting',
+              isDark: isDark,
+              trailing: Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.subtext(isDark), size: 20),
+              onTap: () => _launchUrl(
+                'https://sahiljo14.github.io/nudge-app/support.html',
+              ),
+            ),
+            Divider(color: AppTheme.border(isDark), height: 1, indent: 56),
+            _SettingsRow(
+              icon: Icons.delete_outline_rounded,
+              iconColor: const Color(0xFFA32D2D),
+              title: 'Data Deletion',
+              subtitle: 'Delete your tasks and app data',
+              isDark: isDark,
+              trailing: Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.subtext(isDark), size: 20),
+              onTap: () => _launchUrl(
+                'https://sahiljo14.github.io/nudge-app/account_deletion.html',
               ),
             ),
           ]),
