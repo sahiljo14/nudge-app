@@ -6,117 +6,780 @@
 <title>Support — Nudge</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
     color: #1a202c;
     background: #f7fafc;
     line-height: 1.7;
     -webkit-font-smoothing: antialiased;
   }
+
   .container {
     max-width: 760px;
     margin: 0 auto;
     padding: 48px 20px 80px;
   }
+
+  /* ── Back link ── */
   .back-link {
     display: inline-block;
-    margin-bottom: 24px;
+    margin-bottom: 32px;
     color: #2563eb;
     text-decoration: none;
     font-size: 0.9rem;
     font-weight: 500;
   }
   .back-link:hover { text-decoration: underline; }
-  h1 {
-    font-size: 2.1rem;
-    margin-bottom: 28px;
-    letter-spacing: -0.02em;
-  }
-  h2 {
-    font-size: 1.3rem;
-    margin-top: 36px;
-    margin-bottom: 16px;
-    color: #1a202c;
-  }
-  p {
-    color: #2d3748;
-    font-size: 1rem;
+
+  /* ── Hero ── */
+  .hero {
+    display: flex;
+    align-items: center;
+    gap: 18px;
     margin-bottom: 12px;
   }
-  a { color: #2563eb; }
+  .hero-logo {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    flex-shrink: 0;
+    background: #f0effe;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+  }
+  .hero-logo img {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    display: block;
+  }
+  .hero h1 {
+    font-size: 2rem;
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+  }
+  .hero p {
+    color: #4a5568;
+    font-size: 0.95rem;
+    margin: 0;
+  }
+
+  .app-meta {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 16px 0 36px;
+  }
+  .meta-pill {
+    background: #edf2f7;
+    border-radius: 99px;
+    padding: 4px 14px;
+    font-size: 0.82rem;
+    color: #4a5568;
+    font-weight: 500;
+  }
+
+  /* ── Section headings ── */
+  h2 {
+    font-size: 1.25rem;
+    margin: 40px 0 16px;
+    color: #1a202c;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  /* ── Quick links bar ── */
+  .quick-links {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 36px;
+  }
+  .ql-btn {
+    display: inline-block;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: #2563eb;
+    text-decoration: none;
+    transition: background 0.15s;
+  }
+  .ql-btn:hover { background: #ebf8ff; }
+
+  /* ── FAQ items ── */
   .faq-item {
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 18px 20px;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
+    overflow: hidden;
   }
   .faq-q {
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 16px 20px;
+    text-align: left;
+    font-size: 0.97rem;
     font-weight: 600;
     color: #1a202c;
-    margin-bottom: 8px;
-    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    line-height: 1.5;
   }
+  .faq-q:hover { background: #f7fafc; }
+  .faq-chevron {
+    flex-shrink: 0;
+    font-size: 1.1rem;
+    color: #a0aec0;
+    transition: transform 0.2s;
+  }
+  .faq-item.open .faq-chevron { transform: rotate(180deg); }
   .faq-a {
+    display: none;
+    padding: 0 20px 16px;
+    font-size: 0.95rem;
     color: #4a5568;
-    font-size: 0.97rem;
-    margin-bottom: 0;
+    border-top: 1px solid #f0f4f8;
+    padding-top: 14px;
   }
-  .contact-box {
+  .faq-item.open .faq-a { display: block; }
+  .faq-a p { margin-bottom: 8px; }
+  .faq-a p:last-child { margin-bottom: 0; }
+  .faq-a ol, .faq-a ul { padding-left: 20px; margin: 8px 0; }
+  .faq-a li { margin-bottom: 6px; font-size: 0.95rem; color: #4a5568; }
+  .faq-a code {
+    background: #edf2f7;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.88em;
+    font-family: "SFMono-Regular", Consolas, monospace;
+  }
+  .faq-a strong { color: #1a202c; }
+
+  /* ── Warning / tip boxes inside FAQ ── */
+  .tip {
+    background: #ebf8ff;
+    border-left: 3px solid #3182ce;
+    border-radius: 0 6px 6px 0;
+    padding: 10px 14px;
+    margin: 10px 0;
+    font-size: 0.92rem;
+    color: #2a4365;
+  }
+  .warn-box {
+    background: #fffbeb;
+    border-left: 3px solid #d97706;
+    border-radius: 0 6px 6px 0;
+    padding: 10px 14px;
+    margin: 10px 0;
+    font-size: 0.92rem;
+    color: #744210;
+  }
+
+  /* ── Troubleshooting steps ── */
+  .steps { margin: 10px 0; }
+  .step-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+    align-items: flex-start;
+  }
+  .step-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #ebf8ff;
+    color: #2563eb;
+    font-size: 0.78rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .step-row p { margin: 0; font-size: 0.93rem; color: #4a5568; }
+
+  /* ── Contact section ── */
+  .contact-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 500px) { .contact-grid { grid-template-columns: 1fr; } }
+
+  .contact-card {
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 20px;
+    padding: 18px 20px;
   }
+  .contact-card .cc-icon {
+    font-size: 1.4rem;
+    margin-bottom: 8px;
+  }
+  .contact-card h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1a202c;
+    margin-bottom: 6px;
+  }
+  .contact-card p {
+    font-size: 0.88rem;
+    color: #4a5568;
+    margin-bottom: 10px;
+  }
+  .contact-card .cc-meta {
+    font-size: 0.8rem;
+    color: #a0aec0;
+  }
+  .cc-btn {
+    display: inline-block;
+    margin-top: 10px;
+    background: #2563eb;
+    color: #fff;
+    border-radius: 7px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .cc-btn:hover { background: #1d4ed8; }
+  .cc-btn.outline {
+    background: none;
+    border: 1px solid #2563eb;
+    color: #2563eb;
+  }
+  .cc-btn.outline:hover { background: #ebf8ff; }
+
+  /* ── Links bar ── */
+  .links-bar {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .links-bar a {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .links-bar a:hover { text-decoration: underline; }
+  .links-bar .sep { color: #e2e8f0; }
+
+  /* ── Compatibility table ── */
+  .compat-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    background: #ffffff;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+  }
+  .compat-table th {
+    background: #f7fafc;
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .compat-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f0f4f8;
+    color: #2d3748;
+  }
+  .compat-table tr:last-child td { border-bottom: none; }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 99px;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .badge-green { background: #c6f6d5; color: #276749; }
+  .badge-amber { background: #feebc8; color: #7b341e; }
+  .badge-gray  { background: #edf2f7; color: #4a5568; }
+
   footer {
-    margin-top: 48px;
+    margin-top: 52px;
     padding-top: 20px;
     border-top: 1px solid #e2e8f0;
-    color: #718096;
-    font-size: 0.875rem;
+    color: #a0aec0;
+    font-size: 0.85rem;
     text-align: center;
   }
+  footer a { color: #718096; }
+
   @media (max-width: 480px) {
     .container { padding: 32px 16px 60px; }
-    h1 { font-size: 1.7rem; }
-    h2 { font-size: 1.15rem; }
+    .hero h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.1rem; }
   }
 </style>
 </head>
 <body>
-  <div class="container">
-    <a class="back-link" href="index.html">← Back to home</a>
-    <h1>Nudge — Support</h1>
+<div class="container">
 
-    <h2>Frequently Asked Questions</h2>
+  <a class="back-link" href="index.html">← Back to home</a>
 
-    <div class="faq-item">
-      <p class="faq-q">Q: Does Nudge require an internet connection?</p>
-      <p class="faq-a">A: No. Nudge works fully offline. All your tasks are stored on your device.</p>
+  <!-- ── Hero ── -->
+  <div class="hero">
+    <div class="hero-logo">
+      <img src="media/icon.png" alt="Nudge app icon"
+           onerror="this.style.display='none';this.parentElement.textContent='N'" />
     </div>
-
-    <div class="faq-item">
-      <p class="faq-q">Q: How do I add a task using natural language?</p>
-      <p class="faq-a">A: Just type or share a message like "kal assignment submit karna hai" and Nudge will extract the task and deadline automatically.</p>
+    <div>
+      <h1>Nudge Support</h1>
+      <p>Smart deadline tracker for students</p>
     </div>
-
-    <div class="faq-item">
-      <p class="faq-q">Q: Will my tasks be deleted if I uninstall the app?</p>
-      <p class="faq-a">A: Yes — since everything is stored locally on your device, uninstalling will remove all data.</p>
-    </div>
-
-    <div class="faq-item">
-      <p class="faq-q">Q: How do I share text into Nudge?</p>
-      <p class="faq-a">A: In any app (WhatsApp, Gmail, etc.), select text → tap Share → choose Nudge.</p>
-    </div>
-
-    <h2>Contact</h2>
-    <div class="contact-box">
-      <p>For bugs, feedback, or questions, email: <a href="mailto:agneon.labs@gmail.com">agneon.labs@gmail.com</a></p>
-      <p>Response time: within 2–3 business days.</p>
-    </div>
-
-    <footer>© 2025 Sahil. All rights reserved.</footer>
   </div>
+
+  <div class="app-meta">
+    <span class="meta-pill">Android</span>
+    <span class="meta-pill">Version 1.0.0</span>
+    <span class="meta-pill">Requires Android 8.0+</span>
+    <span class="meta-pill">100% offline</span>
+  </div>
+
+  <!-- ── Quick jump links ── -->
+  <div class="quick-links">
+    <a class="ql-btn" href="#basics">Basics</a>
+    <a class="ql-btn" href="#tasks">Adding tasks</a>
+    <a class="ql-btn" href="#notifications">Notifications</a>
+    <a class="ql-btn" href="#voice">Voice &amp; OCR</a>
+    <a class="ql-btn" href="#data">Data &amp; privacy</a>
+    <a class="ql-btn" href="#troubleshooting">Troubleshooting</a>
+    <a class="ql-btn" href="#contact">Contact</a>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <h2 id="basics">Basics</h2>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      Does Nudge require an internet connection?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>No. Nudge works fully offline — 100% of the time. All your tasks, deadlines, streaks, and documents are stored locally on your device using SQLite.</p>
+      <p>No account is needed. No login. No cloud sync. Your data never leaves your phone.</p>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      What Android version do I need?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <table class="compat-table">
+        <thead>
+          <tr><th>Android version</th><th>Support</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Android 13 + (API 33+)</td><td><span class="badge badge-green">Full support</span></td><td>All features work</td></tr>
+          <tr><td>Android 10 – 12 (API 29–32)</td><td><span class="badge badge-green">Full support</span></td><td>All features work</td></tr>
+          <tr><td>Android 8 – 9 (API 26–28)</td><td><span class="badge badge-amber">Partial</span></td><td>Voice may vary by device</td></tr>
+          <tr><td>Below Android 8</td><td><span class="badge badge-gray">Not supported</span></td><td>App will not install</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      Is Nudge free? Are there in-app purchases or ads?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>Nudge is completely free. There are no ads, no in-app purchases, no subscriptions, and no premium tier. Every feature is available to every user from day one.</p>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <h2 id="tasks">Adding tasks</h2>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      How do I add a task using natural language?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>Tap the <strong>+</strong> button and type your task in plain language — Hindi, English, or Hinglish. Nudge will automatically extract the task name, subject, deadline, and priority.</p>
+      <p>Examples that work:</p>
+      <ul>
+        <li><code>os assignment kal 5 baje urgent</code></li>
+        <li><code>maths test aaj subah 9 baje</code></li>
+        <li><code>submit physics lab friday</code></li>
+        <li><code>DBMS practical tomorrow 3pm</code></li>
+        <li><code>english essay parso by noon</code></li>
+      </ul>
+      <div class="tip">
+        <strong>Tip:</strong> The more context you give (subject + time + date), the more accurate the parsing. You can always edit any field after parsing.
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      Can I add multiple tasks at once?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>Yes — this is one of Nudge's most powerful features. Type multiple tasks separated by a comma, "aur", "and", or a new line:</p>
+      <ul>
+        <li><code>maths test aaj, physics lab friday</code></li>
+        <li><code>OS assignment tomorrow aur CN quiz monday</code></li>
+      </ul>
+      <p>Nudge detects both deadlines and creates two separate task cards. Tap <strong>Save all tasks</strong> to save them at once.</p>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      How do I share text from WhatsApp or another app into Nudge?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <div class="steps">
+        <div class="step-row"><div class="step-num">1</div><p>In WhatsApp (or any app), long-press the message you want to import</p></div>
+        <div class="step-row"><div class="step-num">2</div><p>Tap <strong>Share</strong> from the options menu</p></div>
+        <div class="step-row"><div class="step-num">3</div><p>Select <strong>Nudge</strong> from the share sheet</p></div>
+        <div class="step-row"><div class="step-num">4</div><p>Nudge opens with the text pre-filled — review the parsed task and tap Save</p></div>
+      </div>
+      <div class="tip">Nudge never stores or transmits this shared text — it is used only to fill the task input on your device.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      How do I edit or delete a task?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <ul>
+        <li><strong>Edit:</strong> Tap on any task card to open the edit screen. All fields are editable.</li>
+        <li><strong>Complete:</strong> Swipe right on a task card — it turns green and marks the task as done.</li>
+        <li><strong>Delete:</strong> Swipe left on a task card and confirm deletion.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      What do the coloured left borders on task cards mean?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>Each subject gets a unique colour so you can identify tasks at a glance. The colour is assigned automatically based on the subject detected (e.g. Maths = orange, Physics = blue, OS = purple). You can change the subject by editing the task.</p>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <h2 id="notifications">Notifications &amp; reminders</h2>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      My reminders are not firing — how do I fix this?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <div class="warn-box">
+        <strong>This is the most common issue on Android.</strong> Android aggressively kills background apps to save battery, which stops local notifications from firing. Follow the steps for your phone brand below.
+      </div>
+      <p><strong>All phones — do this first:</strong></p>
+      <div class="steps">
+        <div class="step-row"><div class="step-num">1</div><p>Go to <strong>Settings → Apps → Nudge → Battery</strong></p></div>
+        <div class="step-row"><div class="step-num">2</div><p>Select <strong>Unrestricted</strong> (not "Optimised")</p></div>
+        <div class="step-row"><div class="step-num">3</div><p>Go back to <strong>Settings → Apps → Nudge → Notifications</strong></p></div>
+        <div class="step-row"><div class="step-num">4</div><p>Make sure <strong>Allow notifications</strong> is toggled on</p></div>
+      </div>
+      <p><strong>Xiaomi / Redmi / POCO phones:</strong></p>
+      <div class="steps">
+        <div class="step-row"><div class="step-num">1</div><p>Settings → Apps → Manage apps → Nudge → Battery saver → <strong>No restrictions</strong></p></div>
+        <div class="step-row"><div class="step-num">2</div><p>Settings → Apps → Manage apps → Nudge → <strong>Autostart → Enable</strong></p></div>
+        <div class="step-row"><div class="step-num">3</div><p>Security app → Boost speed → <strong>Remove Nudge from the list</strong></p></div>
+      </div>
+      <p><strong>Samsung phones:</strong></p>
+      <div class="steps">
+        <div class="step-row"><div class="step-num">1</div><p>Settings → Battery → Background usage limits → <strong>Sleeping apps</strong> → Remove Nudge if listed</p></div>
+        <div class="step-row"><div class="step-num">2</div><p>Settings → Apps → Nudge → Battery → <strong>Unrestricted</strong></p></div>
+      </div>
+      <p><strong>OnePlus / Realme / OPPO phones:</strong></p>
+      <div class="steps">
+        <div class="step-row"><div class="step-num">1</div><p>Settings → Battery → <strong>App battery optimisation → Nudge → Don't optimise</strong></p></div>
+        <div class="step-row"><div class="step-num">2</div><p>Settings → Apps → Nudge → <strong>Auto-launch → Enable</strong></p></div>
+      </div>
+      <div class="tip">After changing battery settings, set a test reminder 2 minutes from now to confirm it fires before relying on Nudge for important deadlines.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      How do I set a reminder for a task?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>When adding or editing a task, scroll down to the <strong>Reminders</strong> section. You can enable:</p>
+      <ul>
+        <li><strong>1 day before</strong> — fires 24 hours before the deadline</li>
+        <li><strong>2 hours before</strong> — fires 2 hours before the deadline</li>
+        <li><strong>At deadline</strong> — fires exactly at the deadline time</li>
+        <li><strong>Custom</strong> — pick any date and time</li>
+      </ul>
+      <p>You can enable multiple reminder types for the same task.</p>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      Reminders stopped working after I restarted my phone
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>Nudge includes a boot receiver that re-schedules all your reminders automatically after a device restart. If reminders are not restoring after reboot:</p>
+      <div class="steps">
+        <div class="step-row"><div class="step-num">1</div><p>Make sure <strong>Autostart</strong> is enabled for Nudge in your phone's settings (especially on Xiaomi, Realme, and OnePlus)</p></div>
+        <div class="step-row"><div class="step-num">2</div><p>Open Nudge once after restarting your phone — this triggers the reminder restoration</p></div>
+        <div class="step-row"><div class="step-num">3</div><p>If the issue persists, edit and re-save the affected task to reschedule its reminders</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <h2 id="voice">Voice input &amp; OCR scan</h2>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      Voice input is not working — what should I do?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <div class="steps">
+        <div class="step-row"><div class="step-num">1</div><p>Go to <strong>Settings → Apps → Nudge → Permissions</strong> and make sure <strong>Microphone</strong> is allowed</p></div>
+        <div class="step-row"><div class="step-num">2</div><p>Make sure your device has a speech recognition engine installed. Go to <strong>Settings → General management → Language → On-device language processing</strong> (Samsung) or check that <strong>Google app</strong> is installed and up to date</p></div>
+        <div class="step-row"><div class="step-num">3</div><p>Try speaking clearly in a quiet environment — background noise reduces accuracy significantly</p></div>
+        <div class="step-row"><div class="step-num">4</div><p>If voice still fails, type your task instead — voice is optional and all features are available via text</p></div>
+      </div>
+      <div class="tip">Voice input uses Android's on-device speech recognition. Audio is never recorded or sent anywhere — processing happens entirely on your phone.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      How does OCR scanning work?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>Tap the scan icon on the home screen. You can either pick an image from your gallery or take a photo. Nudge uses on-device ML Kit to extract text from the image, then automatically parses task names and deadlines from the extracted text.</p>
+      <p>Good inputs for OCR:</p>
+      <ul>
+        <li>WhatsApp screenshots of assignment announcements</li>
+        <li>Photos of handwritten notes or timetables</li>
+        <li>Screenshots of college portals or notice boards</li>
+      </ul>
+      <div class="warn-box"><strong>Note:</strong> OCR accuracy depends on image quality. Blurry, low-light, or very small text may not extract correctly. Re-scan with better lighting or type the text manually.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      OCR says "no text found" even though the image has text
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <div class="steps">
+        <div class="step-row"><div class="step-num">1</div><p>Make sure the image is well-lit and in focus — retake the photo in brighter conditions if needed</p></div>
+        <div class="step-row"><div class="step-num">2</div><p>Crop the image to only the text area before scanning to improve accuracy</p></div>
+        <div class="step-row"><div class="step-num">3</div><p>For screenshots (e.g. from WhatsApp), increase screenshot resolution in your camera settings</p></div>
+        <div class="step-row"><div class="step-num">4</div><p>If OCR cannot extract the text, type or paste it manually into the task input — the parsing still works the same way</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <h2 id="data">Data, privacy &amp; account</h2>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      Will my tasks be deleted if I uninstall the app?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>Yes — because Nudge is fully offline with no cloud sync, all your data exists only on your device. Uninstalling the app permanently removes all tasks, streaks, XP, and documents.</p>
+      <p>There is currently no export or backup feature. If you plan to reinstall Nudge, note down any important deadlines before uninstalling.</p>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      How do I delete all my data?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>You have three options:</p>
+      <ul>
+        <li><strong>Uninstall the app</strong> — removes everything permanently</li>
+        <li><strong>Clear app data</strong> — go to Settings → Apps → Nudge → Storage → Clear Data. Resets the app to a fresh state without uninstalling</li>
+        <li><strong>Delete individual tasks</strong> — swipe left on any task card</li>
+      </ul>
+      <p>Since Nudge has no servers, there is no data on our end to delete. See our <a href="account-deletion.html">Data Deletion page</a> for full details.</p>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      Does Nudge collect any personal data?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>No. Nudge collects zero personal data. There are no analytics, no crash reporting, no advertising SDKs, and no data sent to any server. The name and photo you set in the app stay on your device only.</p>
+      <p>See our full <a href="privacy-policy.html">Privacy Policy</a> for details.</p>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      What permissions does Nudge use and why?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <ul>
+        <li><strong>POST_NOTIFICATIONS</strong> — to show deadline reminders you set</li>
+        <li><strong>RECEIVE_BOOT_COMPLETED</strong> — to restore your reminders after the phone restarts</li>
+        <li><strong>VIBRATE</strong> — to vibrate when a reminder fires</li>
+        <li><strong>RECORD_AUDIO</strong> — only used while you hold the voice input button; never recorded or stored</li>
+        <li><strong>READ_MEDIA_IMAGES / READ_EXTERNAL_STORAGE</strong> — only to let you pick an image for OCR scanning</li>
+      </ul>
+      <p>Nudge does not access your contacts, location, camera (live), SMS, or any other sensitive data.</p>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <h2 id="troubleshooting">Other troubleshooting</h2>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      The app crashed or is behaving unexpectedly
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <div class="steps">
+        <div class="step-row"><div class="step-num">1</div><p>Force-close the app: Settings → Apps → Nudge → <strong>Force stop</strong>, then reopen</p></div>
+        <div class="step-row"><div class="step-num">2</div><p>Check for an app update on the Play Store</p></div>
+        <div class="step-row"><div class="step-num">3</div><p>Restart your phone and try again</p></div>
+        <div class="step-row"><div class="step-num">4</div><p>If the issue continues, email us with your phone model and Android version — we'll investigate</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      The task parser got the deadline or subject wrong
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>The parser uses pattern matching and works best when you include clear keywords. If it gets something wrong:</p>
+      <ul>
+        <li>Tap any field in the review card to edit it directly before saving</li>
+        <li>Add more context to your input — e.g. write <code>friday at 5pm</code> instead of just <code>friday</code></li>
+        <li>Use the subject keyword directly — e.g. <code>maths</code>, <code>os</code>, <code>physics</code></li>
+      </ul>
+      <div class="tip">If a particular phrase consistently parses incorrectly, let us know via email — we improve the parser with every update.</div>
+    </div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggle(this)">
+      How do I suggest a new feature?
+      <span class="faq-chevron">▾</span>
+    </button>
+    <div class="faq-a">
+      <p>We love feature requests — especially from students who use the app daily. Email us at <a href="mailto:agneon.labs@gmail.com">agneon.labs@gmail.com</a> with the subject line <strong>Feature Request — Nudge</strong> and describe what you'd like to see.</p>
+      <p>Common requests we're tracking: cloud backup, widgets, subject-wise task filter, and iOS version.</p>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <h2 id="contact">Contact us</h2>
+
+  <div class="contact-grid">
+    <div class="contact-card">
+      <div class="cc-icon">✉️</div>
+      <h3>Bug report or crash</h3>
+      <p>Describe what happened, your phone model, and Android version. Screenshots help.</p>
+      <p class="cc-meta">Response within 3 business days</p>
+      <a class="cc-btn" href="mailto:agneon.labs@gmail.com?subject=Bug Report — Nudge">Send bug report</a>
+    </div>
+    <div class="contact-card">
+      <div class="cc-icon">💡</div>
+      <h3>Feature request</h3>
+      <p>Tell us what you'd like Nudge to do. We read every suggestion.</p>
+      <p class="cc-meta">Response within 3 business days</p>
+      <a class="cc-btn outline" href="mailto:agneon.labs@gmail.com?subject=Feature Request — Nudge">Send suggestion</a>
+    </div>
+    <div class="contact-card">
+      <div class="cc-icon">🔔</div>
+      <h3>Notification issue</h3>
+      <p>Check the notification troubleshooting guide above first, then contact us if still not fixed.</p>
+      <p class="cc-meta">Response within 3 business days</p>
+      <a class="cc-btn outline" href="mailto:agneon.labs@gmail.com?subject=Notification Issue — Nudge">Contact support</a>
+    </div>
+    <div class="contact-card">
+      <div class="cc-icon">🗑️</div>
+      <h3>Data deletion</h3>
+      <p>Want help removing your data? See the full deletion guide or contact us directly.</p>
+      <p class="cc-meta">Response within 3 business days</p>
+      <a class="cc-btn outline" href="account-deletion.html">Data deletion page</a>
+    </div>
+  </div>
+
+  <!-- ── Links bar ── -->
+  <div class="links-bar">
+    <a href="privacy-policy.html">Privacy Policy</a>
+    <span class="sep">|</span>
+    <a href="account-deletion.html">Data Deletion</a>
+    <span class="sep">|</span>
+    <a href="index.html">Home</a>
+    <span class="sep">|</span>
+    <a href="mailto:agneon.labs@gmail.com">agneon.labs@gmail.com</a>
+  </div>
+
+  <footer>© 2025 Sahil · Nudge — Smart Deadline Tracker ·
+    <a href="privacy-policy.html">Privacy Policy</a>
+  </footer>
+</div>
+
+<script>
+  function toggle(btn) {
+    const item = btn.closest('.faq-item');
+    item.classList.toggle('open');
+  }
+  document.querySelectorAll('.faq-item').forEach(function(item, i) {
+    if (i === 0) item.classList.add('open');
+  });
+</script>
 </body>
 </html>
