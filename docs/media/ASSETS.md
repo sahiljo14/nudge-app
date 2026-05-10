@@ -7,7 +7,7 @@ Drop README graphics and screenshots here.
 | File | Purpose | Recommended size |
 |---|---|---|
 | `banner.png` | Hero banner at the top of the README | 1280 x 400 |
-| `logo.png` | App logo under the banner | 160 x 160 (square) |
+| `logo.svg` | App logo under the banner | 160 x 160 (square) |
 | `demo.gif` | 30-60s walkthrough loop | 280 - 360 wide |
 | `demo.mp4` | High-quality video (optional) | 720p+ |
 | `demo-thumbnail.png` | Click-through thumbnail for the video | 16:9 |

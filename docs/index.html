@@ -34,6 +34,12 @@
     box-shadow: 0 10px 40px rgba(20, 30, 60, 0.08);
     text-align: center;
   }
+  .logo {
+    width: 96px;
+    height: auto;
+    display: block;
+    margin: 0 auto 16px;
+  }
   h1 {
     font-size: 2.4rem;
     margin-bottom: 8px;
@@ -79,14 +85,54 @@
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
-  footer {
-    text-align: center;
-    padding: 24px 20px;
+  .site-footer {
+    margin-top: 48px;
+    padding: 20px 20px 28px;
+    border-top: 1px solid #e2e8f0;
     color: #718096;
     font-size: 0.875rem;
   }
+  .footer-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 18px;
+  }
+  .footer-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: #1a202c;
+    font-weight: 600;
+  }
+  .footer-logo {
+    width: 24px;
+    height: 24px;
+    display: block;
+  }
+  .footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+  .footer-links a {
+    color: #4a5568;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .footer-links a:hover { text-decoration: underline; }
+  .footer-copy { color: #a0aec0; }
+  @media (max-width: 640px) {
+    .footer-inner { flex-direction: column; align-items: flex-start; }
+    .footer-copy { width: 100%; }
+  }
   @media (max-width: 480px) {
     .card { padding: 32px 20px; }
+    .logo { width: 72px; }
     h1 { font-size: 1.9rem; }
     .tagline { font-size: 1rem; }
     .description { font-size: 0.95rem; }
@@ -97,7 +143,8 @@
 <body>
   <main>
     <div class="card">
-      <h1>Nudge 🔔</h1>
+      <img class="logo" src="media/logo.svg" alt="Nudge logo" />
+      <h1>Nudge</h1>
       <p class="tagline">Never miss a deadline again.</p>
       <p class="description">
         Smart task manager for students. Understands natural language including Hinglish and Marathi. Share any message directly into Nudge — it extracts the task and deadline automatically. Works fully offline. No account needed.
@@ -109,6 +156,21 @@
       </div>
     </div>
   </main>
-  <footer>© 2025 Nudge. All rights reserved.</footer>
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <a class="footer-brand" href="index.html">
+        <img class="footer-logo" src="media/logo.svg" alt="Nudge logo" />
+        <span>Nudge</span>
+      </a>
+      <div class="footer-links">
+        <a href="index.html">Home</a>
+        <a href="privacy_policy.html">Privacy Policy</a>
+        <a href="account_deletion.html">Data Deletion</a>
+        <a href="support.html">Support</a>
+        <a href="mailto:agneon.labs@gmail.com">agneon.labs@gmail.com</a>
+      </div>
+      <div class="footer-copy">© 2026 Nudge. All rights reserved.</div>
+    </div>
+  </footer>
 </body>
 </html>
