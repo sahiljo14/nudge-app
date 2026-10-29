@@ -1,40 +1,11 @@
-<!-- ============================================================ -->
-<!--                          HEADER                              -->
-<!-- ============================================================ -->
+# Nudge 🔔
+> Never miss a deadline again.
 
-<div align="center">
+Nudge is a smart task manager built for students. Share a WhatsApp message, paste text, or type it yourself — Nudge extracts the task, figures out the deadline, and keeps you on track.
 
-<!-- BANNER -->
-<!-- Replace with: docs/media/banner.png (recommended size: 1280x400) -->
-<img src="docs/media/banner.png" alt="Nudge - your deadline brain" width="100%" />
+Built for how students actually communicate. Plain English, Hinglish, Marathi — vague deadlines and all.
 
-<br /><br />
-
-<!-- LOGO -->
-<!-- Replace with: docs/media/logo.png (recommended size: 160x160) -->
-<img src="docs/media/logo.png" alt="Nudge logo" width="120" />
-
-<h1>Nudge</h1>
-
-<p>
-  <i>Your deadline brain. Never miss what matters.</i>
-</p>
-
-<p>
-  An <b>offline-first</b> Flutter app that turns messy text, screenshots, and shared documents
-  <br />
-  into clean, actionable tasks - automatically, on-device, in your language.
-</p>
-
-<br />
-
-<!-- PRIMARY BADGES -->
-<p>
-  <a href="https://flutter.dev"><img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.x-02569B?style=for-the-badge&logo=flutter&logoColor=white" /></a>
-  <a href="https://dart.dev"><img alt="Dart" src="https://img.shields.io/badge/Dart-3.x-0175C2?style=for-the-badge&logo=dart&logoColor=white" /></a>
-  <img alt="Android" src="https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" />
-  <img alt="Material 3" src="https://img.shields.io/badge/Material_3-757575?style=for-the-badge&logo=materialdesign&logoColor=white" />
-</p>
+---
 
 <!-- SECONDARY BADGES -->
 <p>
@@ -46,7 +17,7 @@
   <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square&logo=github" />
 </p>
 
-<br />
+Academic deadlines arrive from everywhere — WhatsApp groups, Google Classroom, college portals, verbal announcements. It's unstructured, scattered, and easy to forget. Assignments get missed. Submissions happen at 11:59 PM.
 
 <!-- NAVIGATION -->
 <p>
@@ -65,12 +36,24 @@
   <a href="#-roadmap"><b>Roadmap</b></a>
 </p>
 
-</div>
+Share any message directly to Nudge. It reads the text, extracts the task, resolves the deadline — and saves it. No copy-pasting. No manual formatting. Just tap Share → Nudge → Save.
+
+---
 
 <br />
 
-> [!NOTE]
-> Nudge runs **entirely on-device**. No accounts, no cloud, no telemetry. Your messages, screenshots, and tasks never leave your phone.
+- **Share to App** — share text from WhatsApp, Classroom, Notes directly into Nudge
+- **Smart Parser** — extracts task name and deadline from natural language
+- **Hinglish + Marathi support**
+  - `"kal submit karna hai"` → Due: Tomorrow
+  - `"udya report dena ahe"` → Due: Tomorrow
+  - `"submit by next Monday"` → Due: Next Monday
+  - `"3 din mein assignment"` → Due: In 3 days
+- **Offline-first** — works without internet, always
+- **Local SQLite storage** — your data stays on your device
+- **Clean minimal UI** — built for speed, not clutter
+
+---
 
 <br />
 
@@ -322,108 +305,34 @@ sequenceDiagram
 
 | You write | Nudge schedules |
 |---|---|
-| `kal submit karna hai` | tomorrow |
-| `udya report dena ahe` | tomorrow |
-| `submit by next Monday` | next Monday |
-| `assignment due 15 May 6pm` | 15 May, 6:00 PM |
-| `viva parva sakali 10 baje` | day after tomorrow, 10:00 AM |
+| Framework | Flutter (Dart) |
+| Local Database | SQLite via `sqflite` |
+| NLP Parser | Rule-based with Hinglish/Marathi support |
+| Share Integration | Android native intent (`ACTION_SEND`) |
+| Platform | Android (iOS ready) |
 
-</div>
+---
 
-<br />
+## Roadmap
 
-<!-- ============================================================ -->
-<!--                        SCREENSHOTS                           -->
-<!-- ============================================================ -->
+- [x] Phase 1 — Project setup and local SQLite storage
+- [x] Phase 2 — Manual task input with deadline picker
+- [x] Phase 3 — Share intent from WhatsApp, Classroom, Notes
+- [x] Phase 4 — Hinglish + Marathi parser and date resolver
+- [ ] Phase 5 — OCR from screenshots
+- [ ] Phase 6 — Local push notifications
+- [ ] Phase 7 — Cloud sync (optional)
 
-<h2 align="center">
-  <img src="https://img.shields.io/badge/-SCREENSHOTS-EC407A?style=for-the-badge&logo=instagram&logoColor=white" alt="Screenshots" />
-</h2>
+---
 
-<p align="center"><i>Tap any image for the full-size version.</i></p>
-
-<div align="center">
-
-<table>
-  <tr>
-    <td align="center"><b>Home</b></td>
-    <td align="center"><b>Calendar</b></td>
-    <td align="center"><b>Add task</b></td>
-  </tr>
-  <tr>
-    <td><img src="docs/media/screen-home.png" width="220" alt="Home screen" /></td>
-    <td><img src="docs/media/screen-calendar.png" width="220" alt="Calendar screen" /></td>
-    <td><img src="docs/media/screen-add.png" width="220" alt="Add task screen" /></td>
-  </tr>
-  <tr>
-    <td align="center"><b>OCR scan</b></td>
-    <td align="center"><b>Share intent</b></td>
-    <td align="center"><b>Profile</b></td>
-  </tr>
-  <tr>
-    <td><img src="docs/media/screen-ocr.png" width="220" alt="OCR scan" /></td>
-    <td><img src="docs/media/screen-share.png" width="220" alt="Share intent import" /></td>
-    <td><img src="docs/media/screen-profile.png" width="220" alt="Profile screen" /></td>
-  </tr>
-</table>
-
-</div>
-
-<details>
-<summary align="center"><b>More screens</b> &nbsp; - &nbsp; onboarding, voice, dark mode</summary>
-
-<br />
-
-<div align="center">
-
-<table>
-  <tr>
-    <td align="center"><b>Onboarding</b></td>
-    <td align="center"><b>Voice input</b></td>
-    <td align="center"><b>Dark mode</b></td>
-  </tr>
-  <tr>
-    <td><img src="docs/media/screen-onboarding.png" width="220" alt="Onboarding" /></td>
-    <td><img src="docs/media/screen-voice.png" width="220" alt="Voice input" /></td>
-    <td><img src="docs/media/screen-dark.png" width="220" alt="Dark mode" /></td>
-  </tr>
-</table>
-
-</div>
-
-</details>
-
-<br />
-
-<!-- ============================================================ -->
-<!--                       GETTING STARTED                        -->
-<!-- ============================================================ -->
-
-<h2 align="center">
-  <img src="https://img.shields.io/badge/-GETTING%20STARTED-43A047?style=for-the-badge&logo=googleplay&logoColor=white" alt="Getting started" />
-</h2>
+## Getting Started
 
 ### Prerequisites
-
-<table>
-  <tr>
-    <td><img src="https://img.shields.io/badge/Flutter-3.2%2B-02569B?logo=flutter&logoColor=white" alt="Flutter" /></td>
-    <td>Flutter SDK 3.2.0 or newer</td>
-  </tr>
-  <tr>
-    <td><img src="https://img.shields.io/badge/Android-Studio-3DDC84?logo=androidstudio&logoColor=white" alt="Android Studio" /></td>
-    <td>Android Studio with the Android SDK, <b>or</b> a physical Android device with USB debugging</td>
-  </tr>
-  <tr>
-    <td><img src="https://img.shields.io/badge/JDK-17%2B-ED8B00?logo=openjdk&logoColor=white" alt="JDK" /></td>
-    <td>Java Development Kit 17 or newer</td>
-  </tr>
-</table>
-
-### Install and run
+- Flutter SDK 3.x or above
+- Android Studio with Android SDK
+- Android device or emulator (API 21+)
 
 ```bash
-# 1. Clone
 git clone https://github.com/sahiljo14/nudge-app.git
 cd nudge-app
 
@@ -438,172 +347,49 @@ flutter test
 flutter run
 ```
 
-### Build a release APK
-
+### Test Share Intent (via ADB)
 ```bash
-flutter build apk --release
-# Output: build/app/outputs/flutter-apk/app-release.apk
+adb shell am start \
+  -a android.intent.action.SEND \
+  -t text/plain \
+  --es android.intent.extra.TEXT "kal tak DSA assignment submit karna hai" \
+  com.nudgeapp.nudge/.MainActivity
 ```
 
-<details>
-<summary><b>Android permissions Nudge requests</b></summary>
+---
 
-<br />
-
-| Permission | Why |
-|---|---|
-| Camera / storage | OCR scanning and image picking |
-| Microphone | Voice input |
-| Notifications | Deadline reminders |
-| Exact alarms (Android 12+) | Precise reminder scheduling |
-
-</details>
-
-<br />
-
-<!-- ============================================================ -->
-<!--                      PROJECT STRUCTURE                       -->
-<!-- ============================================================ -->
-
-<h2 align="center">
-  <img src="https://img.shields.io/badge/-PROJECT%20STRUCTURE-5E35B1?style=for-the-badge&logo=files&logoColor=white" alt="Project structure" />
-</h2>
-
+## Project Structure
 ```
-lib/
-├── main.dart                # App entry point
-├── database/                # SQLite schema and DAOs
-├── models/                  # Task, reminder, and config models
-├── parser/
-│   └── task_parser.dart     # Rule-based NLP parser
-├── services/
-│   ├── notification_service.dart
-│   ├── ocr_service.dart
-│   ├── share_service.dart
-│   ├── tts_service.dart
-│   ├── user_prefs.dart
-│   └── voice_service.dart
-├── screens/
-│   ├── splash_screen.dart
-│   ├── onboarding_screen.dart
-│   ├── home_screen.dart
-│   ├── calendar_screen.dart
-│   ├── add_task_screen.dart
-│   ├── text_import_screen.dart
-│   ├── doc_import_screen.dart
-│   ├── ocr_scan_screen.dart
-│   └── profile_screen.dart
-├── features/                # Feature-scoped widgets
-├── widgets/                 # Shared UI components
-├── theme/                   # Material 3 theme config
-└── utils/                   # Date helpers, formatters
+nudge-app/
+├── android/
+│   └── app/src/main/
+│       ├── kotlin/com/nudgeapp/nudge/
+│       │   └── MainActivity.kt        # Share intent handler
+│       └── AndroidManifest.xml        # Intent filters
+├── lib/
+│   ├── database/
+│   │   └── db_helper.dart             # SQLite CRUD
+│   ├── models/
+│   │   └── task.dart                  # Task model
+│   ├── parser/
+│   │   ├── date_resolver.dart         # Natural language date parser
+│   │   ├── rule_parser.dart           # Task + deadline extractor
+│   │   └── share_handler.dart         # Platform channel for share intent
+│   ├── screens/
+│   │   ├── home_screen.dart           # Task list
+│   │   └── add_task_screen.dart       # Add/parse task
+│   ├── widgets/
+│   │   └── task_card.dart             # Task UI component
+│   └── main.dart                      # App entry + share intent router
+└── pubspec.yaml
 ```
 
-<br />
+---
 
-<!-- ============================================================ -->
-<!--                    SUPPORTED LANGUAGES                       -->
-<!-- ============================================================ -->
-
-<h2 align="center">
-  <img src="https://img.shields.io/badge/-LANGUAGES-FF6F00?style=for-the-badge&logo=googletranslate&logoColor=white" alt="Languages" />
-</h2>
-
-<div align="center">
-
-| Locale | Examples Nudge understands |
-|---|---|
-| <img src="https://img.shields.io/badge/English-1976D2?style=flat-square" alt="English" /> | `tomorrow`, `next Monday`, `in 3 days`, `by 5pm` |
-| <img src="https://img.shields.io/badge/Hinglish-FF6F00?style=flat-square" alt="Hinglish" /> | `kal`, `parso`, `agle hafte`, `subah`, `shaam` |
-| <img src="https://img.shields.io/badge/Marathi-D32F2F?style=flat-square" alt="Marathi" /> | `udya`, `parva`, `pudhcha`, `sakali`, `sandhyakali` |
-
-</div>
-
-> Adding a new locale? See `lib/parser/task_parser.dart` for the keyword maps.
-
-<br />
-
-<!-- ============================================================ -->
-<!--                          ROADMAP                             -->
-<!-- ============================================================ -->
-
-<h2 align="center">
-  <img src="https://img.shields.io/badge/-ROADMAP-00ACC1?style=for-the-badge&logo=trello&logoColor=white" alt="Roadmap" />
-</h2>
-
-<div align="center">
-
-| # | Phase | Status |
-|:-:|---|:-:|
-| 1 | Core app setup + local database | <img src="https://img.shields.io/badge/done-success?style=flat-square" alt="done" /> |
-| 2 | Manual task creation | <img src="https://img.shields.io/badge/done-success?style=flat-square" alt="done" /> |
-| 3 | Share intent import | <img src="https://img.shields.io/badge/done-success?style=flat-square" alt="done" /> |
-| 4 | Hinglish / Marathi deadline parsing | <img src="https://img.shields.io/badge/done-success?style=flat-square" alt="done" /> |
-| 5 | OCR for images and screenshots | <img src="https://img.shields.io/badge/done-success?style=flat-square" alt="done" /> |
-| 6 | Local deadline reminders | <img src="https://img.shields.io/badge/done-success?style=flat-square" alt="done" /> |
-| 7 | Voice input | <img src="https://img.shields.io/badge/done-success?style=flat-square" alt="done" /> |
-| 8 | Optional encrypted cloud sync | <img src="https://img.shields.io/badge/planned-orange?style=flat-square" alt="planned" /> |
-| 9 | iOS release | <img src="https://img.shields.io/badge/planned-orange?style=flat-square" alt="planned" /> |
-| 10 | Home-screen widgets and quick-tile actions | <img src="https://img.shields.io/badge/planned-orange?style=flat-square" alt="planned" /> |
-
-</div>
-
-<br />
-
-<!-- ============================================================ -->
-<!--                        CONTRIBUTING                          -->
-<!-- ============================================================ -->
-
-<h2 align="center">
-  <img src="https://img.shields.io/badge/-CONTRIBUTING-D81B60?style=for-the-badge&logo=github&logoColor=white" alt="Contributing" />
-</h2>
-
-Contributions, issues, and feature requests are welcome.
-
-```bash
-# 1. Fork the repo, then:
-git checkout -b feat/my-feature
-
-# 2. Make your changes, then verify
-flutter analyze
-flutter test
-
-# 3. Push and open a PR
-git push origin feat/my-feature
-```
-
-For larger changes, please open an issue first to align on the approach.
-
-<br />
-
-<!-- ============================================================ -->
-<!--                          LICENSE                             -->
-<!-- ============================================================ -->
-
-<h2 align="center">
-  <img src="https://img.shields.io/badge/-LICENSE-455A64?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License" />
-</h2>
-
-<p align="center">
-  Released under the <a href="LICENSE"><b>MIT License</b></a>.
-</p>
-
-<br />
-
-<!-- ============================================================ -->
-<!--                          FOOTER                              -->
-<!-- ============================================================ -->
-
-<div align="center">
-
-<br />
-
-<h3><i>"Built by students, for students."</i></h3>
-
-<sub>Crafted with care, caffeine, and the occasional last-minute deadline.</sub>
+## License
 
 <br /><br />
 
 <a href="#nudge"><img src="https://img.shields.io/badge/%E2%86%91%20Back%20to%20top-111?style=flat-square" alt="Back to top" /></a>
 
-</div>
+*Built by students, for students.*

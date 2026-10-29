@@ -7,52 +7,13 @@ import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/task.dart';
-import '../models/document.dart';
-import '../parser/task_parser.dart';
-import '../theme/app_theme.dart';
-import '../database/db_helper.dart';
-import '../services/notification_service.dart';
-import '../features/voice_gate.dart';
-import '../services/voice_service.dart';
-import '../widgets/subject_editor_sheet.dart';
+import '../parser/rule_parser.dart';
+import '../database/db_helper.dart';  // ← NEW
+import 'home_screen.dart';            // ← NEW
 
-// ── Mutable task holder for multi-task preview editing ───────────────────────
-
-class _MutableTask {
-  final TextEditingController nameCtrl;
-  final TextEditingController descCtrl;
-  final List<TextEditingController> linkCtrls;
-  final List<({String path, String mime, String name})> attachedFiles;
-  DateTime deadline;
-  String taskType;
-  String subject;
-  String priority;
-
-  _MutableTask.fromParsed(ParsedTask p)
-      : nameCtrl     = TextEditingController(text: p.taskName),
-        descCtrl     = TextEditingController(),
-        linkCtrls    = [TextEditingController()],
-        attachedFiles = [],
-        deadline = p.deadline,
-        taskType = p.taskType,
-        subject  = p.subject,
-        priority = p.priority;
-
-  void dispose() {
-    nameCtrl.dispose();
-    descCtrl.dispose();
-    for (final c in linkCtrls) c.dispose();
-  }
-}
-
-// ── Reminder model ────────────────────────────────────────────────────────────
-
-class _Reminder {
-  final String label;
-  final Duration offset;
-  bool enabled;
-  _Reminder({required this.label, required this.offset, this.enabled = true});
-}
+class AddTaskScreen extends StatefulWidget {
+  final String? initialRawText;
+  const AddTaskScreen({super.key, this.initialRawText});
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -66,124 +27,44 @@ class AddTaskScreen extends StatefulWidget {
 }
 
 class _AddTaskScreenState extends State<AddTaskScreen> {
-  final _ctrl      = TextEditingController();
-  final _focus     = FocusNode();
-  final _descCtrl  = TextEditingController();
-  final _nameCtrl  = TextEditingController(); // edit-mode name field
-  final List<TextEditingController> _linkCtrls = [];  // multiple links
-  final List<_MutableTask> _multiTasks = [];          // multi-task preview
-  ParsedTask? _parsed;
-  bool _showReview = false;
-  bool _saving           = false;
-  bool _isListening      = false;
-  bool _voiceTransitioning = false; // true while stopListening() is awaited
-  String? _voiceError;
-  Timer? _watchdogTimer; // auto-stops if no speech within 2.7 s of start
-
-  bool get _isEditMode => widget.initialTask != null;
-
-  late DateTime _deadline;
-  late String   _priority;
-  late String   _taskType;
-  late String   _subject;
-
-  final List<_Reminder> _reminders = [
-    _Reminder(label: '1 day before', offset: const Duration(days: 1)),
-    _Reminder(label: '2 hrs before', offset: const Duration(hours: 2)),
-    _Reminder(label: 'At deadline',  offset: Duration.zero),
-  ];
-
-  // ── Attached files (multiple) ──────────────────────────────────────────────
-  final List<({String path, String mime, String name})> _attachedFiles = [];
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _rawMessageController = TextEditingController();
+  DateTime _selectedDeadline = DateTime.now().add(const Duration(days: 1));
+  bool _showConfirmBanner = false;
 
   @override
   void initState() {
     super.initState();
-    _deadline = DateTime.now().add(const Duration(days: 1));
-    _priority = 'normal';
-    _taskType = 'assignment';
-    _subject  = '';
-
-    // Initialise link controllers
-    if (widget.initialTask != null) {
-      final links = widget.initialTask!.referenceLinks;
-      _linkCtrls.addAll(links.isEmpty
-          ? [TextEditingController()]
-          : links.map((l) => TextEditingController(text: l)));
-    } else {
-      _linkCtrls.add(TextEditingController());
+    if (widget.initialRawText != null && widget.initialRawText!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _rawMessageController.text = widget.initialRawText!;
+        _parseMessage();
+      });
     }
-
-    if (_isEditMode) {
-      final t = widget.initialTask!;
-      _deadline    = t.deadline;
-      _priority    = t.priority;
-      _taskType    = t.taskType;
-      _subject     = t.subject;
-      _nameCtrl.text = t.name;
-      _descCtrl.text = t.description;
-      _parsed = ParsedTask(
-        taskName:      t.name,
-        taskType:      t.taskType,
-        deadline:      t.deadline,
-        deadlineLabel: DateFormat('d MMMM').format(t.deadline),
-        priority:      t.priority,
-        subject:       t.subject,
-        confidence:    1.0,
-      );
-      _showReview = true;
-    } else if (widget.autoVoice && VoiceGate.isEnabled) {
-      // Opened via Voice option in the plus menu — start listening immediately.
-      WidgetsBinding.instance.addPostFrameCallback((_) => _startVoice());
-    } else if (widget.prefill.isNotEmpty) {
-      _ctrl.text = widget.prefill;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _parse());
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
-    }
-    _ctrl.addListener(_onTextChanged);
-    // Warm up the speech engine so the first tap starts instantly.
-    if (VoiceGate.isEnabled) VoiceService.instance.init();
   }
 
   @override
   void dispose() {
-    _watchdogTimer?.cancel();
-    // Stop mic if screen is closed mid-listening (fire-and-forget — dispose() is sync)
-    if (_isListening) VoiceService.instance.stopListening();
-    _ctrl.removeListener(_onTextChanged);
-    _ctrl.dispose();
-    _descCtrl.dispose();
-    _nameCtrl.dispose();
-    _focus.dispose();
-    for (final c in _linkCtrls) c.dispose();
-    for (final t in _multiTasks) t.dispose();
+    _nameController.dispose();
+    _rawMessageController.dispose();
     super.dispose();
   }
 
-  void _onTextChanged() {
-    if (_showReview) setState(() => _showReview = false);
-  }
+  void _parseMessage() {
+    final raw = _rawMessageController.text.trim();
+    if (raw.isEmpty) return;
 
-  void _parse() {
-    final text = _ctrl.text.trim();
-    if (text.isEmpty) return;
-    HapticFeedback.lightImpact();
-    final r = TaskParser.parse(text);
+    final result = RuleParser.parse(raw);
+
     setState(() {
-      _parsed     = r;
-      _deadline   = r.deadline;
-      _priority   = r.priority;
-      _taskType   = r.taskType;
-      _subject    = r.subject;
-      _nameCtrl.text = r.taskName;
-      _showReview = true;
-      // Populate mutable task list for multi-task preview
-      for (final t in _multiTasks) t.dispose();
-      _multiTasks.clear();
-      if (r.isMultiTask && r.subtasks.isNotEmpty) {
-        _multiTasks.addAll(r.subtasks.map(_MutableTask.fromParsed));
+      if (result.name.isNotEmpty) {
+        _nameController.text = result.name;
       }
+      if (result.deadline != null) {
+        _selectedDeadline = result.deadline!;
+      }
+      _showConfirmBanner = result.confidence < 0.6;
     });
   }
 
@@ -336,323 +217,25 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     });
   }
 
-  String _mimeFromExt(String ext) {
-    switch (ext.toLowerCase()) {
-      case 'pdf':  return 'application/pdf';
-      case 'jpg':
-      case 'jpeg': return 'image/jpeg';
-      case 'png':  return 'image/png';
-      case 'doc':  return 'application/msword';
-      case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      default:     return 'application/octet-stream';
-    }
-  }
-
-  // ── Fixed custom reminder dialog — uses BottomSheet instead of AlertDialog
-  // to avoid pixel overflow on small screens
-  void _addCustomReminder() {
-    int days = 0, hours = 0, minutes = 0;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) {
-          final isDark = Theme.of(ctx).brightness == Brightness.dark;
-          return ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(ctx).size.height * 0.90,
-            ),
-            child: SingleChildScrollView(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              ),
-              child: Container(
-            decoration: BoxDecoration(
-              color: AppTheme.card(isDark),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // Handle bar
-              Container(width: 40, height: 4,
-                  decoration: BoxDecoration(
-                      color: AppTheme.border(isDark),
-                      borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 20),
-              Text('Custom reminder',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
-                      color: AppTheme.text(isDark))),
-              const SizedBox(height: 6),
-              Text('How long before the deadline?',
-                  style: TextStyle(fontSize: 13, color: AppTheme.subtext(isDark))),
-              const SizedBox(height: 28),
-
-              // Three steppers side by side — each in an Expanded
-              IntrinsicHeight(
-                child: Row(
-                  children: [
-                    Expanded(child: _StepperColumn(
-                      label: 'Days',
-                      value: days,
-                      onChanged: (v) => setSheet(() => days = v),
-                    )),
-                    VerticalDivider(color: AppTheme.border(isDark), width: 24),
-                    Expanded(child: _StepperColumn(
-                      label: 'Hours',
-                      value: hours,
-                      onChanged: (v) => setSheet(() => hours = v),
-                    )),
-                    VerticalDivider(color: AppTheme.border(isDark), width: 24),
-                    Expanded(child: _StepperColumn(
-                      label: 'Mins',
-                      value: minutes,
-                      onChanged: (v) => setSheet(() => minutes = v),
-                    )),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    final total = Duration(days: days, hours: hours, minutes: minutes);
-                    if (total.inMinutes > 0) {
-                      setState(() => _reminders.add(
-                          _Reminder(label: _durationLabel(total), offset: total, enabled: true)));
-                    }
-                    Navigator.pop(ctx);
-                  },
-                  child: const Text('Add reminder'),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text('Cancel', style: TextStyle(color: AppTheme.subtext(isDark))),
-              ),
-            ]),
-          ),
-            ),
-          );
-        },
-      ),
+  void _saveTask() async {                                        // ← CHANGED
+    if (!_formKey.currentState!.validate()) return;
+    final newTask = Task(
+      name: _nameController.text.trim(),
+      deadline: _selectedDeadline,
     );
-  }
 
-  String _durationLabel(Duration d) {
-    if (d.inDays >= 1)  return '${d.inDays}d before';
-    if (d.inHours >= 1) return '${d.inHours}h before';
-    return '${d.inMinutes}m before';
-  }
-
-  // ── Voice input ───────────────────────────────────────────────────────────
-
-  Future<void> _onVoiceTap() async {
-    // Block re-entrant taps while a stop transition is already in progress.
-    if (_voiceTransitioning) return;
-
-    if (_isListening) {
-      // Out-of-sync guard: if the service is no longer actually listening
-      // (e.g. it crashed silently), just reset the UI without touching native.
-      if (VoiceService.instance.state != VoiceState.listening) {
-        if (mounted) setState(() { _isListening = false; _voiceError = null; });
-        return;
-      }
-
-      // Normal second-tap stop: cancel watchdog and block further taps.
-      _watchdogTimer?.cancel();
-      _watchdogTimer = null;
-      if (mounted) setState(() => _voiceTransitioning = true);
-      String? capturedText;
-      try {
-        capturedText = await VoiceService.instance.stopListening();
-      } finally {
-        if (mounted) setState(() { _isListening = false; _voiceTransitioning = false; });
-      }
-      // Commit any text that was captured before the user stopped.
-      if (capturedText != null && capturedText.isNotEmpty && mounted) {
-        setState(() { _ctrl.text = capturedText!; _voiceError = null; });
-        _parse();
-      }
-      return;
-    }
-
-    VoiceGate.request(
-      onGranted: _startVoice,
-      onDenied: () {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Voice input is not available.')),
+    if (widget.initialRawText != null) {                          // ← NEW
+      // Launched from share intent — save directly then go to HomeScreen
+      await DBHelper.instance.createTask(newTask);
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+              (route) => false,
         );
-      },
-    );
-  }
-
-  Future<void> _startVoice() async {
-    // Guard: do not start if a stop is still resolving or widget is gone.
-    if (!mounted || _voiceTransitioning) return;
-    setState(() { _isListening = true; _voiceError = null; });
-    final error = await VoiceService.instance.startListening(
-      onResult: (text) {
-        _watchdogTimer?.cancel();
-        _watchdogTimer = null;
-        if (!mounted) return;
-        setState(() { _ctrl.text = text; _isListening = false; _voiceError = null; });
-        _parse();
-      },
-      // Live partial updates — first non-empty partial cancels the no-speech watchdog.
-      onPartialResult: (text) {
-        if (text.isNotEmpty) { _watchdogTimer?.cancel(); _watchdogTimer = null; }
-        if (!mounted) return;
-        setState(() => _ctrl.text = text);
-      },
-      // Called on timeout, error, or silent stop — always clears listening state.
-      onStop: () {
-        _watchdogTimer?.cancel();
-        _watchdogTimer = null;
-        if (!mounted) return;
-        setState(() => _isListening = false);
-      },
-    );
-    if (error != null && mounted) {
-      // Map error strings to user-friendly messages.
-      // Covers both speech_to_text and legacy error keywords.
-      String msg = error;
-      if (error.contains('permission') || error.contains('denied') ||
-          error.contains('PERMISSION_DENIED')) {
-        msg = 'Microphone permission denied. Enable in Settings.';
-      } else if (error.contains('not available') || error.contains('INIT_FAILED') ||
-          error.contains('initialize') || error.contains('extract')) {
-        msg = 'Voice engine failed to start. Try again.';
-      } else if (error.contains('Could not') || error.contains('START_FAILED')) {
-        msg = 'Could not access microphone. Try again.';
-      }
-      setState(() { _voiceError = msg; _isListening = false; });
-    } else if (error == null && mounted) {
-      // Listening started — auto-stop if user says nothing within 2.7 s.
-      _watchdogTimer = Timer(const Duration(milliseconds: 2700), () async {
-        if (!mounted || !_isListening || _voiceTransitioning) return;
-        setState(() => _voiceTransitioning = true);
-        await VoiceService.instance.stopListening();
-        if (mounted) setState(() { _isListening = false; _voiceTransitioning = false; });
-      });
-    }
-  }
-
-  Future<void> _save() async {
-    if (!_isEditMode && _ctrl.text.trim().isEmpty) return;
-    if (!_showReview) { _parse(); return; }
-    setState(() => _saving = true);
-
-    // ── Edit mode: update existing task ──────────────────────────
-    if (_isEditMode) {
-      final t = widget.initialTask!;
-      final name = _nameCtrl.text.trim();
-      final updated = t.copyWith(
-        name:          name.isNotEmpty ? name : t.name,
-        deadline:      _deadline,
-        priority:      _priority,
-        taskType:      _taskType,
-        subject:       _subject,
-        description:   _descCtrl.text.trim(),
-        referenceLink: _linkCtrls.map((c) => _normalizeUrl(c.text.trim())).where((s) => s.isNotEmpty).join('\n'),
-      );
-      await DBHelper.instance.updateTask(updated);
-      await _scheduleSelected(updated);
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      return;
-    }
-
-    final desc    = _descCtrl.text.trim();
-    final linkStr = _linkCtrls
-        .map((c) => _normalizeUrl(c.text.trim()))
-        .where((s) => s.isNotEmpty)
-        .join('\n');
-
-    if (_parsed != null && _parsed!.isMultiTask && _multiTasks.isNotEmpty) {
-      // Multi-task: create one DB task per (user-edited) mutable task
-      for (final mt in _multiTasks) {
-        final name = mt.nameCtrl.text.trim();
-        final mtLinkStr = mt.linkCtrls
-            .map((c) => _normalizeUrl(c.text.trim()))
-            .where((s) => s.isNotEmpty)
-            .join('\n');
-        final task = Task(
-          name:          name.isNotEmpty ? name : _ctrl.text.trim(),
-          deadline:      mt.deadline,
-          priority:      mt.priority,
-          taskType:      mt.taskType,
-          subject:       mt.subject.isNotEmpty ? mt.subject : _subject,
-          description:   mt.descCtrl.text.trim(),
-          referenceLink: mtLinkStr,
-        );
-        final id    = await DBHelper.instance.createTask(task);
-        final saved = task.copyWith(id: id);
-        await _scheduleSelected(saved);
-        for (final f in mt.attachedFiles) {
-          await DBHelper.instance.createDocument(NudgeDocument(
-            filePath: f.path,
-            mimeType: f.mime,
-            subject:  task.subject,
-            note:     f.name,
-            savedAt:  DateTime.now(),
-            taskId:   id,
-          ));
-        }
       }
     } else {
-      // Single-task path — prefer user-edited name from _nameCtrl
-      final nameOverride = _nameCtrl.text.trim();
-      final taskName = nameOverride.isNotEmpty
-          ? nameOverride
-          : (_parsed?.taskName ?? _ctrl.text.trim());
-      final task = Task(
-        name:          taskName.isNotEmpty ? taskName : _ctrl.text.trim(),
-        deadline:      _deadline,
-        priority:      _priority,
-        taskType:      _taskType,
-        subject:       _subject,
-        description:   desc,
-        referenceLink: linkStr,
-      );
-      final id    = await DBHelper.instance.createTask(task);
-      final saved = task.copyWith(id: id);
-      await _scheduleSelected(saved);
-      for (final f in _attachedFiles) {
-        await DBHelper.instance.createDocument(NudgeDocument(
-          filePath: f.path,
-          mimeType: f.mime,
-          subject:  _subject,
-          note:     f.name,
-          savedAt:  DateTime.now(),
-          taskId:   id,
-        ));
-      }
-    }
-
-    if (!mounted) return;
-    Navigator.of(context).pop();
-  }
-
-  Future<void> _scheduleSelected(Task task) async {
-    await NotificationService.instance.cancelReminders(task);
-    final now = DateTime.now();
-    for (int i = 0; i < _reminders.length; i++) {
-      final r = _reminders[i];
-      if (!r.enabled) continue;
-      final when = task.deadline.subtract(r.offset);
-      if (when.isAfter(now)) {
-        await NotificationService.instance.scheduleCustomReminder(
-          id: task.id! * 100 + i,
-          task: task,
-          when: when,
-          label: r.label,
-        );
-      }
+      // Launched normally from HomeScreen — pop back with task
+      Navigator.of(context).pop(newTask);
     }
   }
 
@@ -693,15 +276,85 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (_isEditMode) ...[
-                // Edit mode: name text field
-                Text('Task name',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                        color: AppTheme.subtext(isDark), letterSpacing: 0.3)),
-                const SizedBox(height: 8),
+
+              // ── Paste Message Section ──────────────────────────
+              const Text('Paste a message (optional)',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _rawMessageController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'e.g. "kal tak DSA assignment submit karna hai"',
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  prefixIcon: const Icon(Icons.message_outlined),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _parseMessage,
+                  icon: const Icon(Icons.auto_fix_high_rounded),
+                  label: const Text('Auto-fill from message'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.indigo.shade600,
+                    side: BorderSide(color: Colors.indigo.shade300),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Confirmation Banner ────────────────────────────
+              if (_showConfirmBanner) ...[
+                const SizedBox(height: 12),
                 Container(
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppTheme.card(isDark),
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline,
+                          color: Colors.orange.shade700, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Low confidence — please check the details below.',
+                          style: TextStyle(
+                              color: Colors.orange.shade800, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 16),
+
+              // ── Task Name ──────────────────────────────────────
+              const Text('Task Name',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _nameController,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: 'e.g., Submit OS Assignment',
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppTheme.border(isDark)),
                   ),
@@ -828,273 +481,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   ),
                 ]),
               ),
+              const SizedBox(height: 24),
 
-              // Voice error banner (shown below input box, clears on next action)
-              if (_voiceError != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _voiceError!,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.alert,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-
-              // Example chips
-              if (!_showReview) ...[
-                const SizedBox(height: 16),
-                Text('Try an example',
-                    style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark), fontWeight: FontWeight.w500)),
-                const SizedBox(height: 8),
-                Wrap(spacing: 8, runSpacing: 8,
-                  children: ['OS assignment kal tak urgent', 'Maths exam Monday 9am',
-                    'Submit form today by 5pm', 'DBMS project next week']
-                      .map((ex) => GestureDetector(
-                    onTap: () { _ctrl.text = ex; _parse(); },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: AppTheme.card(isDark),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppTheme.border(isDark))),
-                      child: Text(ex, style: const TextStyle(
-                          fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w500)),
-                    ),
-                  )).toList(),
-                ),
-              ], // end if (!_showReview)
-              ], // end else (non-edit-mode NLP input block)
-
-              // Review card + extras
-              if (_showReview && _parsed != null) ...[
-                const SizedBox(height: 24),
-                if (_parsed!.isMultiTask && _multiTasks.isNotEmpty)
-                  _MultiTaskPreviewSection(
-                    tasks:          _multiTasks,
-                    onRemove:       (i) => setState(() {
-                      _multiTasks[i].dispose();
-                      _multiTasks.removeAt(i);
-                      if (_multiTasks.isEmpty) {
-                        _showReview = false;
-                      }
-                    }),
-                    onPickDeadline: _pickDeadlineFor,
-                    onAddLink:      _addLinkFor,
-                    onRemoveLink:   _removeLinkFor,
-                    onPickFile:      _pickFileFor,
-                    onTakePhoto:     _takePhotoFor,
-                    onRemoveFile:    _removeFileFor,
-                    onBatchSubject:  (s) => setState(() {
-                      for (final mt in _multiTasks) mt.subject = s;
-                    }),
-                  )
-                else
-                  _ReviewCard(
-                    parsed: _parsed!, deadline: _deadline,
-                    priority: _priority, taskType: _taskType, subject: _subject,
-                    nameCtrl:         _nameCtrl,
-                    onPickDeadline:   _pickDeadline,
-                    onPriorityChange: (v) => setState(() => _priority = v),
-                    onTypeChange:     (v) => setState(() => _taskType = v),
-                    onSubjectChange:  (v) => setState(() => _subject = v),
-                  ),
-                if (!(_parsed!.isMultiTask && _multiTasks.isNotEmpty)) ...[
-                  const SizedBox(height: 16),
-                  _DescLinksSection(
-                    descCtrl:    _descCtrl,
-                    linkCtrls:   _linkCtrls,
-                    onAddLink:   _addLink,
-                    onRemoveLink: _removeLink,
-                  ),
-                ],
-                const SizedBox(height: 16),
-                _RemindersSection(
-                  reminders:      _reminders,
-                  deadline:       _deadline,
-                  onToggle:       (i) => setState(() => _reminders[i].enabled = !_reminders[i].enabled),
-                  onAddCustom:    _addCustomReminder,
-                  onRemoveCustom: (i) => setState(() => _reminders.removeAt(i)),
-                ),
-                if (!(_parsed!.isMultiTask && _multiTasks.isNotEmpty)) ...[
-                  const SizedBox(height: 16),
-                  _AttachmentSection(
-                    files:       _attachedFiles,
-                    onPick:      _pickFile,
-                    onTakePhoto: _takePhoto,
-                    onRemove:    (i) => setState(() => _attachedFiles.removeAt(i)),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    child: _saving
-                        ? const SizedBox(width: 20, height: 20,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(_parsed!.isMultiTask && _multiTasks.isNotEmpty
-                            ? 'Save ${_multiTasks.length} task${_multiTasks.length == 1 ? "" : "s"}'
-                            : 'Save task'),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      ),
-    );
-  }
-}
-
-// ── Stepper column widget (replaces _NumField — no overflow) ──────────────────
-
-class _StepperColumn extends StatelessWidget {
-  final String label;
-  final int value;
-  final ValueChanged<int> onChanged;
-
-  const _StepperColumn({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(label,
-            style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.subtext(isDark))),
-        const SizedBox(height: 12),
-        // Up button
-        _StepBtn(
-          icon: Icons.add_rounded,
-          filled: true,
-          onTap: () => onChanged(value + 1),
-        ),
-        const SizedBox(height: 10),
-        Text('$value',
-            style: TextStyle(
-                fontSize: 24, fontWeight: FontWeight.w800, color: AppTheme.text(isDark))),
-        const SizedBox(height: 10),
-        // Down button
-        _StepBtn(
-          icon: Icons.remove_rounded,
-          filled: false,
-          onTap: value > 0 ? () => onChanged(value - 1) : null,
-        ),
-      ],
-    );
-  }
-}
-
-class _StepBtn extends StatelessWidget {
-  final IconData icon;
-  final bool filled;
-  final VoidCallback? onTap;
-  const _StepBtn({required this.icon, required this.filled, this.onTap});
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        width: 44, height: 44,
-        decoration: BoxDecoration(
-          color: onTap == null
-              ? AppTheme.surface(isDark)
-              : filled
-              ? AppTheme.primary
-              : AppTheme.surface(isDark),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: onTap == null
-                ? AppTheme.border(isDark)
-                : filled
-                ? AppTheme.primary
-                : AppTheme.border(isDark),
-          ),
-        ),
-        child: Icon(icon,
-            size: 20,
-            color: onTap == null
-                ? AppTheme.subtext(isDark).withValues(alpha: 0.5)
-                : filled
-                ? Colors.white
-                : AppTheme.text(isDark)),
-      ),
-    );
-  }
-}
-
-// ── Review card ───────────────────────────────────────────────────────────────
-
-class _ReviewCard extends StatelessWidget {
-  final ParsedTask parsed;
-  final DateTime deadline;
-  final String priority, taskType, subject;
-  final TextEditingController nameCtrl;
-  final VoidCallback onPickDeadline;
-  final ValueChanged<String> onPriorityChange, onTypeChange, onSubjectChange;
-
-  const _ReviewCard({
-    required this.parsed, required this.deadline,
-    required this.priority, required this.taskType, required this.subject,
-    required this.nameCtrl,
-    required this.onPickDeadline, required this.onPriorityChange,
-    required this.onTypeChange, required this.onSubjectChange,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sc = AppTheme.subjectColor(subject.isNotEmpty ? subject : 'default');
-    return Container(
-      decoration: BoxDecoration(color: AppTheme.card(isDark),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border(isDark))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Header
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.05),
-              borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-              border: Border(bottom: BorderSide(color: AppTheme.border(isDark)))),
-          child: Row(children: [
-            const Icon(Icons.auto_awesome_rounded, size: 14, color: AppTheme.primary),
-            const SizedBox(width: 6),
-            const Text('Review your task',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
-            const Spacer(),
-            Text('Tap any field to edit',
-                style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark))),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            TextField(
-              controller: nameCtrl,
-              textCapitalization: TextCapitalization.sentences,
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
-                  color: AppTheme.text(isDark), letterSpacing: -0.4),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-                hintText: 'Task name',
-              ),
-            ),
-            const SizedBox(height: 14),
-            Wrap(spacing: 8, runSpacing: 8, children: [
+              // ── Deadline ───────────────────────────────────────
+              const Text('Deadline',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
               GestureDetector(
                 onTap: () => _editSubject(context),
                 child: Container(
@@ -1440,154 +832,19 @@ class _RemindersSection extends StatelessWidget {
                   ]),
                 ),
               ),
-            ]),
-            const SizedBox(height: 10),
-            Row(children: [
-              Icon(Icons.info_outline_rounded, size: 11, color: AppTheme.subtext(isDark)),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text('Greyed = not enough time remaining · Long-press custom to remove',
-                    style: TextStyle(fontSize: 10, color: AppTheme.subtext(isDark))),
-              ),
-            ]),
-          ]),
-        ),
-      ]),
-    );
-  }
-}
+              const SizedBox(height: 40),
 
-// ── Attachment section (multi-file) ───────────────────────────────────────────
-
-class _AttachmentSection extends StatelessWidget {
-  final List<({String path, String mime, String name})> files;
-  final VoidCallback onPick;
-  final VoidCallback onTakePhoto;
-  final ValueChanged<int> onRemove;
-
-  const _AttachmentSection({
-    required this.files,
-    required this.onPick,
-    required this.onTakePhoto,
-    required this.onRemove,
-  });
-
-  IconData _iconFor(String mime) {
-    if (mime == 'application/pdf') return Icons.picture_as_pdf_rounded;
-    if (mime.startsWith('image/')) return Icons.image_rounded;
-    return Icons.insert_drive_file_rounded;
-  }
-
-  Color _colorFor(String mime) {
-    if (mime == 'application/pdf') return const Color(0xFFD85A30);
-    if (mime.startsWith('image/')) return const Color(0xFF378ADD);
-    return AppTheme.primary;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.card(isDark),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border(isDark)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Header
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.primary.withValues(alpha: 0.05),
-            borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-            border: Border(bottom: BorderSide(color: AppTheme.border(isDark))),
-          ),
-          child: Row(children: [
-            const Icon(Icons.attach_file_rounded, size: 14, color: AppTheme.primary),
-            const SizedBox(width: 6),
-            const Text('Attach documents',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
-            const Spacer(),
-            if (files.isNotEmpty)
-              Text('${files.length} file${files.length == 1 ? '' : 's'}',
-                  style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark)))
-            else
-              Text('PDF, image, Word',
-                  style: TextStyle(fontSize: 11, color: AppTheme.subtext(isDark))),
-          ]),
-        ),
-
-        Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(children: [
-            // Existing files list
-            if (files.isNotEmpty) ...[
-              ...List.generate(files.length, (i) {
-                final f = files[i];
-                final color = _colorFor(f.mime);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(children: [
-                    Container(
-                      width: 40, height: 40,
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(_iconFor(f.mime), color: color, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(f.name,
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                              color: AppTheme.text(isDark)),
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () => onRemove(i),
-                      child: Builder(
-                        builder: (context) {
-                          final isDk = Theme.of(context).brightness == Brightness.dark;
-                          return Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: isDk ? AppTheme.alert.withValues(alpha: 0.15) : const Color(0xFFFFEEEE),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(Icons.close_rounded,
-                                size: 16, color: isDk ? const Color(0xFFFF8A70) : const Color(0xFFA32D2D)),
-                          );
-                        },
-                      ),
-                    ),
-                  ]),
-                );
-              }),
-              const SizedBox(height: 4),
-            ],
-
-            // Camera + file picker buttons
-            if (files.isEmpty) ...[
-              Row(children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: onTakePhoto,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surface(isDark),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.border(isDark)),
-                      ),
-                      child: Column(children: [
-                        Icon(Icons.camera_alt_rounded, size: 28, color: AppTheme.subtext(isDark)),
-                        const SizedBox(height: 6),
-                        Text('Take Photo',
-                            style: TextStyle(fontSize: 12, color: AppTheme.subtext(isDark),
-                                fontWeight: FontWeight.w600)),
-                      ]),
+              // ── Save Button ────────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _saveTask,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.indigo.shade600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),

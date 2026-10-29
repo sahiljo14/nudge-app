@@ -1,13 +1,9 @@
 // lib/main.dart
 
 import 'package:flutter/material.dart';
-import 'screens/splash_screen.dart';
-import 'services/notification_service.dart';
-import 'services/user_prefs.dart';
-import 'theme/app_theme.dart';
-
-// ── Global theme notifier ─────────────────────────────────────────────────────
-final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
+import 'screens/home_screen.dart';
+import 'screens/add_task_screen.dart';
+import 'parser/share_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,16 +23,45 @@ class NudgeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (_, mode, __) => MaterialApp(
-        title: 'Nudge',
-        debugShowCheckedModeBanner: false,
-        theme:      AppTheme.light,
-        darkTheme:  AppTheme.dark,
-        themeMode:  mode,
-        home: const SplashScreen(),
+    return MaterialApp(
+      title: 'Nudge',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
+        cardColor: Colors.white,
+        scaffoldBackgroundColor: const Color(0xFFF5F6FA),
       ),
+      home: const _StartupRouter(),
     );
   }
+}
+
+class _StartupRouter extends StatefulWidget {
+  const _StartupRouter();
+
+  @override
+  State<_StartupRouter> createState() => _StartupRouterState();
+}
+
+class _StartupRouterState extends State<_StartupRouter> {
+  @override
+  void initState() {
+    super.initState();
+    _handleSharedText();
+  }
+
+  Future<void> _handleSharedText() async {
+    final sharedText = await ShareHandler.getSharedText();
+    if (sharedText != null && sharedText.isNotEmpty && mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => AddTaskScreen(initialRawText: sharedText),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => const HomeScreen();
 }
