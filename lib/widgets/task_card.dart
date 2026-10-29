@@ -1,108 +1,307 @@
+// lib/widgets/task_card.dart
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
+import '../theme/app_theme.dart';
 
 class TaskCard extends StatelessWidget {
   final Task task;
   final VoidCallback onToggleDone;
   final VoidCallback onDelete;
+  final bool isSelected;
+  final int docCount;
+
+  // 0xFF4A40E0 at 6% opacity: (0.06 * 255).round() = 15 = 0x0F
+  static const _cardShadow = BoxShadow(
+    color: Color(0x0F4A40E0),
+    blurRadius: 20,
+    offset: Offset(0, 4),
+  );
+  static const _cardRadius = BorderRadius.all(Radius.circular(16));
+  static const _swipeRightBg = BoxDecoration(
+    color: Color(0xFFE8F5E9),
+    borderRadius: _cardRadius,
+    border: Border.fromBorderSide(BorderSide(color: Color(0xFFC8E6C9))),
+  );
+  static const _swipeLeftBg = BoxDecoration(
+    color: Color(0xFFFFEEEE),
+    borderRadius: _cardRadius,
+    border: Border.fromBorderSide(BorderSide(color: Color(0xFFFFCCCC))),
+  );
 
   const TaskCard({
     super.key,
     required this.task,
     required this.onToggleDone,
     required this.onDelete,
+    this.isSelected = false,
+    this.docCount = 0,
   });
 
-  Color _deadlineColor() {
-    final daysLeft = task.deadline.difference(DateTime.now()).inDays;
-    if (task.isDone) return Colors.green.shade400;
-    if (daysLeft < 0) return Colors.red.shade700;
-    if (daysLeft == 0) return Colors.red.shade400;
-    if (daysLeft <= 2) return Colors.orange.shade400;
-    return Colors.blue.shade400;
-  }
-
-  String _deadlineLabel() {
-    final daysLeft = task.deadline.difference(DateTime.now()).inDays;
-    if (task.isDone) return 'Done ✓';
-    if (daysLeft < 0) return 'Overdue!';
-    if (daysLeft == 0) return 'Due Today!';
-    if (daysLeft == 1) return 'Due Tomorrow';
-    return 'Due: ${DateFormat('dd MMM, hh:mm a').format(task.deadline)}';
+  String get _timeLabel {
+    if (task.isDone) return 'Completed';
+    final diff = task.deadline.difference(DateTime.now());
+    if (diff.isNegative) {
+      final h = -diff.inHours;
+      return h < 24 ? 'Overdue by ${h}h' : 'Overdue by ${-diff.inDays}d';
+    }
+    if (diff.inMinutes < 60) return 'Due in ${diff.inMinutes}m';
+    if (diff.inHours < 24) return 'Due in ${diff.inHours}h';
+    if (diff.inDays == 1) return 'Due tomorrow';
+    return DateFormat('d MMM · h:mm a').format(task.deadline);
   }
 
   @override
   Widget build(BuildContext context) {
-    final color = _deadlineColor();
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border(left: BorderSide(color: color, width: 5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ListTile(
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: GestureDetector(
-          onTap: onToggleDone,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 26,
-            height: 26,
+    final isDark       = Theme.of(context).brightness == Brightness.dark;
+    final subjectColor = AppTheme.subjectColor(task.subject);
+    final urgColor     =
+    task.isDone ? AppTheme.calm : AppTheme.urgencyColor(task.deadline);
+    final isDone       = task.isDone;
+    final accentColor  = isDone ? AppTheme.subtext(isDark) : subjectColor;
+
+    final cardContent = ClipRRect(
+      borderRadius: _cardRadius,
+      child: Stack(
+        children: [
+          Container(
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: task.isDone ? Colors.green.shade400 : Colors.transparent,
-              border: Border.all(
-                color: task.isDone
-                    ? Colors.green.shade400
-                    : Colors.grey.shade400,
-                width: 2,
+              color: AppTheme.card(isDark),
+              borderRadius: _cardRadius,
+              border: isDark
+                  ? Border.all(color: AppTheme.border(isDark))
+                  : null,
+              boxShadow: isDark ? null : const [_cardShadow],
+            ),
+            child: Padding(
+              // Extra left padding to make room for the accent bar
+              padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Checkbox
+                  GestureDetector(
+                    onTap: onToggleDone,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOutBack,
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isDone ? const Color(0xFF3B6D11) : Colors.transparent,
+                        border: Border.all(
+                          color: isDone
+                              ? const Color(0xFF3B6D11)
+                              : const Color(0xFFCCCCD8),
+                          width: 2,
+                        ),
+                      ),
+                      child: isDone
+                          ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Content
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Expanded(
+                            child: Text(
+                              task.name,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: isDone
+                                    ? AppTheme.subtext(isDark)
+                                    : AppTheme.text(isDark),
+                                decoration: isDone ? TextDecoration.lineThrough : null,
+                                decorationColor: AppTheme.subtext(isDark),
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                          ),
+                          if (task.priority == 'urgent' && !isDone)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppTheme.secondary
+                                    .withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(100),
+                              ),
+                              child: Text('URGENT',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTheme.secondary,
+                                      letterSpacing: 0.8)),
+                            ),
+                        ]),
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          if (task.subject.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: subjectColor.withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(task.subject,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: subjectColor)),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          Icon(AppTheme.taskTypeIcon(task.taskType),
+                              size: 13, color: const Color(0xFFAAAAB5)),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              _timeLabel,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isDone ? const Color(0xFF3B6D11) : urgColor,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ]),
+                        // Description preview
+                        if (task.description.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            task.description,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDone
+                                  ? const Color(0xFFAAAAB5)
+                                  : const Color(0xFF888899),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                        // Link / doc count indicators
+                        if (task.referenceLinks.isNotEmpty || docCount > 0) ...[
+                          const SizedBox(height: 6),
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (task.referenceLinks.isNotEmpty) ...[
+                              Icon(Icons.link_rounded,
+                                  size: 11, color: const Color(0xFF4A40E0).withValues(alpha: 0.7)),
+                              const SizedBox(width: 3),
+                              Text('${task.referenceLinks.length}',
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF4A40E0))),
+                            ],
+                            if (task.referenceLinks.isNotEmpty && docCount > 0)
+                              const SizedBox(width: 8),
+                            if (docCount > 0) ...[
+                              Icon(Icons.attach_file_rounded,
+                                  size: 11, color: const Color(0xFF888899)),
+                              const SizedBox(width: 3),
+                              Text('$docCount',
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF888899))),
+                            ],
+                          ]),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: task.isDone
-                ? const Icon(Icons.check, size: 16, color: Colors.white)
-                : null,
           ),
-        ),
-        title: Text(
-          task.name,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            decoration: task.isDone ? TextDecoration.lineThrough : null,
-            color: task.isDone ? Colors.grey : Colors.black87,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            children: [
-              Icon(Icons.access_time_rounded, size: 13, color: color),
-              const SizedBox(width: 4),
-              Text(
-                _deadlineLabel(),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: color,
-                  fontWeight: FontWeight.w500,
+          // Left accent bar — drawn on top, clipped by ClipRRect
+          Positioned(
+            left: 0, top: 0, bottom: 0,
+            child: Container(
+              width: 4,
+              decoration: BoxDecoration(
+                color: accentColor,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  bottomLeft: Radius.circular(16),
                 ),
               ),
-            ],
+            ),
+          ),
+          // Selection overlay
+          if (isSelected)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2DC9A8).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                      color: const Color(0xFF2DC9A8), width: 2),
+                ),
+                alignment: Alignment.topRight,
+                padding: const EdgeInsets.all(10),
+                child: const Icon(Icons.check_circle_rounded,
+                    size: 18, color: Color(0xFF2DC9A8)),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    if (task.id == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: cardContent,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Dismissible(
+        key: ValueKey('task_${task.id}'),
+        direction: DismissDirection.horizontal,
+        confirmDismiss: (dir) async {
+          if (dir == DismissDirection.startToEnd) {
+            onToggleDone();
+            return false; // snap back — toggling is not a dismiss
+          }
+          return true; // left swipe: actually dismiss the item
+        },
+        onDismissed: (dir) {
+          if (dir == DismissDirection.endToStart) onDelete();
+        },
+        // Swipe right → mark done / unmark
+        background: Container(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 20),
+          decoration: _swipeRightBg,
+          child: Icon(
+            task.isDone ? Icons.replay_rounded : Icons.check_rounded,
+            color: const Color(0xFF388E3C), size: 24,
           ),
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline_rounded, color: Colors.grey),
-          onPressed: onDelete,
+        // Swipe left → delete
+        secondaryBackground: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          decoration: _swipeLeftBg,
+          child: const Icon(Icons.delete_outline_rounded,
+              color: Color(0xFFA32D2D), size: 24),
         ),
+        child: cardContent,
       ),
     );
   }

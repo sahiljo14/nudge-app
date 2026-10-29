@@ -1,55 +1,227 @@
+// lib/database/db_helper.dart
+
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/task.dart';
+import '../models/document.dart';
 
 class DBHelper {
-  static final DBHelper instance = DBHelper._init();
-  static Database? _database;
+  DBHelper._();
+  static final DBHelper instance = DBHelper._();
+  static Database? _db;
 
-  DBHelper._init();
+  Future<Database> get database async => _db ??= await _init();
 
-  Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDB('tasks.db');
-    return _database!;
+  Future<Database> _init() async {
+    final path = join(await getDatabasesPath(), 'nudge_v2.db');
+    return openDatabase(
+      path,
+      version: 3,
+      onCreate: _create,
+      onUpgrade: _migrate,
+      onOpen: (db) async {
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_tasks_completedAt ON tasks(completedAt)');
+      },
+    );
   }
 
-  Future<Database> _initDB(String fileName) async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, fileName);
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+  Future<void> _migrate(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute(
+          'ALTER TABLE tasks ADD COLUMN completedAt INTEGER');
+    }
+    if (oldVersion < 3) {
+      await db.execute(
+          "ALTER TABLE tasks ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+      await db.execute(
+          "ALTER TABLE tasks ADD COLUMN referenceLink TEXT NOT NULL DEFAULT ''");
+    }
   }
 
-  Future _createDB(Database db, int version) async {
+  Future<void> _create(Database db, int _) async {
     await db.execute('''
       CREATE TABLE tasks (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        name     TEXT    NOT NULL,
-        deadline TEXT    NOT NULL,
-        isDone   INTEGER NOT NULL DEFAULT 0
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT    NOT NULL,
+        deadline    TEXT    NOT NULL,
+        isDone      INTEGER NOT NULL DEFAULT 0,
+        priority    TEXT    NOT NULL DEFAULT 'normal',
+        taskType    TEXT    NOT NULL DEFAULT 'assignment',
+        subject     TEXT    NOT NULL DEFAULT '',
+        docId          INTEGER,
+        completedAt    INTEGER,
+        description    TEXT NOT NULL DEFAULT '',
+        referenceLink  TEXT NOT NULL DEFAULT ''
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE documents (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        filePath TEXT    NOT NULL,
+        mimeType TEXT    NOT NULL,
+        subject  TEXT    NOT NULL DEFAULT '',
+        note     TEXT    NOT NULL DEFAULT '',
+        savedAt  TEXT    NOT NULL,
+        taskId   INTEGER
+      )
+    ''');
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_tasks_completedAt ON tasks(completedAt)');
   }
+
+  // ── Tasks ──────────────────────────────────────────────────────────────
 
   Future<int> createTask(Task task) async {
     final db = await database;
-    return await db.insert('tasks', task.toMap());
+    final map = task.toMap()..remove('id');
+    return db.insert('tasks', map);
   }
 
   Future<List<Task>> getAllTasks() async {
     final db = await database;
-    final maps = await db.query('tasks', orderBy: 'deadline ASC');
-    return maps.map((map) => Task.fromMap(map)).toList();
+    final rows = await db.query('tasks', orderBy: 'deadline ASC');
+    return rows.map(Task.fromMap).toList();
   }
 
-  Future<int> updateTask(Task task) async {
+  Future<List<Task>> getTodayTasks() async {
     final db = await database;
-    return await db.update('tasks', task.toMap(),
+    final now = DateTime.now();
+    final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final rows = await db.query(
+      'tasks',
+      where: 'isDone = 0 AND deadline <= ?',
+      whereArgs: [end.toIso8601String()],
+      orderBy: 'deadline ASC',
+    );
+    return rows.map(Task.fromMap).toList();
+  }
+
+  Future<void> updateTask(Task task) async {
+    final db = await database;
+    await db.update('tasks', task.toMap(),
         where: 'id = ?', whereArgs: [task.id]);
   }
 
-  Future<int> deleteTask(int id) async {
+  Future<void> deleteTask(int id) async {
     final db = await database;
-    return await db.delete('tasks', where: 'id = ?', whereArgs: [id]);
+    await db.delete('tasks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> bulkDeleteTasks(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    final placeholders = List.filled(ids.length, '?').join(',');
+    await db.delete('tasks', where: 'id IN ($placeholders)', whereArgs: ids);
+  }
+
+  // ── Documents ──────────────────────────────────────────────────────────
+
+  // NOTE: Multiple document rows may share the same filePath (e.g. same file
+  // attached to different tasks). This is intentional — files are stored by
+  // reference path, not copied, to avoid disk duplication.
+  Future<int> createDocument(NudgeDocument doc) async {
+    final db = await database;
+    final map = doc.toMap()..remove('id');
+    return db.insert('documents', map);
+  }
+
+  Future<List<NudgeDocument>> getAllDocuments() async {
+    final db = await database;
+    final rows = await db.query('documents', orderBy: 'savedAt DESC');
+    return rows.map(NudgeDocument.fromMap).toList();
+  }
+
+  /// Single-query replacement for getSubjects() + N×getDocumentsBySubject()
+  /// + getAllDocuments() (for uncategorised). Groups results in Dart.
+  Future<Map<String, List<NudgeDocument>>> getAllDocumentsGrouped() async {
+    final db = await database;
+    final rows = await db.query('documents', orderBy: 'subject ASC, savedAt DESC');
+    final map = <String, List<NudgeDocument>>{};
+    for (final row in rows) {
+      final doc = NudgeDocument.fromMap(row);
+      final key = doc.subject.isEmpty ? 'Uncategorised' : doc.subject;
+      (map[key] ??= []).add(doc);
+    }
+    return map;
+  }
+
+  Future<List<String>> getSubjects() async {
+    final db = await database;
+    final taskSubjects = await db.rawQuery(
+        'SELECT DISTINCT subject FROM tasks WHERE subject != "" ORDER BY subject ASC');
+    final docSubjects = await db.rawQuery(
+        'SELECT DISTINCT subject FROM documents WHERE subject != "" ORDER BY subject ASC');
+    final all = <String>{};
+    for (final r in taskSubjects) {
+      all.add(r['subject'] as String);
+    }
+    for (final r in docSubjects) {
+      all.add(r['subject'] as String);
+    }
+    final list = all.toList()..sort();
+    return list;
+  }
+
+  Future<List<NudgeDocument>> getDocumentsBySubject(String subject) async {
+    final db = await database;
+    final rows = await db.query(
+      'documents',
+      where: 'subject = ?',
+      whereArgs: [subject],
+      orderBy: 'savedAt DESC',
+    );
+    return rows.map(NudgeDocument.fromMap).toList();
+  }
+
+  Future<NudgeDocument?> getDocumentById(int id) async {
+    final db = await database;
+    final rows =
+    await db.query('documents', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) return null;
+    return NudgeDocument.fromMap(rows.first);
+  }
+
+  // Returns ALL documents linked to a task via taskId (supports multiple files)
+  Future<List<NudgeDocument>> getDocumentsByTaskId(int taskId) async {
+    final db = await database;
+    final rows = await db.query(
+      'documents',
+      where: 'taskId = ?',
+      whereArgs: [taskId],
+      orderBy: 'savedAt ASC',
+    );
+    return rows.map(NudgeDocument.fromMap).toList();
+  }
+
+  Future<void> updateDocument(NudgeDocument doc) async {
+    final db = await database;
+    await db.update('documents', doc.toMap(),
+        where: 'id = ?', whereArgs: [doc.id]);
+  }
+
+  Future<void> deleteDocument(int id) async {
+    final db = await database;
+    await db.delete('documents', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<Task?> getTaskById(int id) async {
+    final db = await database;
+    final rows = await db.query('tasks', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) return null;
+    return Task.fromMap(rows.first);
+  }
+
+  /// Deletes all completed tasks whose completedAt is more than 24 hours ago.
+  Future<void> deleteExpiredCompletedTasks() async {
+    final db = await database;
+    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
+    await db.delete(
+      'tasks',
+      where: 'completedAt IS NOT NULL AND completedAt < ?',
+      whereArgs: [cutoff.millisecondsSinceEpoch],
+    );
   }
 }

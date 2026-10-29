@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Nudge uses the microphone to let you dictate tasks by voice.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Nudge uses speech recognition to convert your voice into task text.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Nudge uses the camera to photograph documents and scan task deadlines.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Nudge reads photos from your library to scan text and extract deadlines.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
